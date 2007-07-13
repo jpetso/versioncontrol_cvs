@@ -29,18 +29,18 @@ function versioncontrol_cvs_install() {
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_repositories} (
-        repo_id int unsigned NOT NULL auto_increment,
+        repo_id int unsigned NOT NULL default '0',
         modules varchar(255) NOT NULL default '',
         update_method tinyint unsigned NOT NULL default '0',
         updated int unsigned NOT NULL default '0',
-        PRIMARY KEY (repoid)
+        PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_file_revisions} (
         commit_id int unsigned NOT NULL default '0',
         filepath varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
-        PRIMARY KEY (cid, filepath)
+        PRIMARY KEY (commit_id, filepath)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       break;

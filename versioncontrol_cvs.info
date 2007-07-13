@@ -1,4 +1,5 @@
 ; $Id$
 name = "CVS backend for Version Control API"
 description = "Provides CVS commit information and account management as a pluggable backend."
+dependencies = versioncontrol
 package = Version Control
