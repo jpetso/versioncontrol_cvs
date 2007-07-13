@@ -1,0 +1,51 @@
+<?php
+// $Id$
+/**
+ * @file
+ * CVS backend for Version Control API - Provides CVS commit information and
+ * account management as a pluggable backend.
+ *
+ * Copyright 2006 by Karthik ("Zen", http://drupal.org/user/21209)
+ * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
+ * Copyright 2007 by Jakob Petsovits <jpetso@gmx.at>
+ *
+ * Distributed under the GNU General Public Licence version 2 or higher,
+ * as published by the FSF on http://www.gnu.org/copyleft/gpl.html
+ */
+
+/**
+ * Implementation of hook_install().
+ */
+function versioncontrol_cvs_install() {
+  switch ($GLOBALS['db_type']) {
+    case 'mysqli':
+    case 'mysql':
+      db_query("CREATE TABLE {versioncontrol_cvs_accounts} (
+        uid int unsigned NOT NULL default '0',
+        username varchar(64) NOT NULL default '',
+        password varchar(64) NOT NULL default '',
+        PRIMARY KEY (name),
+        KEY uid (uid)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_repositories} (
+        repo_id int unsigned NOT NULL auto_increment,
+        modules varchar(255) NOT NULL default '',
+        update_method tinyint unsigned NOT NULL default '0',
+        updated int unsigned NOT NULL default '0',
+        PRIMARY KEY (repoid)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_file_revisions} (
+        commit_id int unsigned NOT NULL default '0',
+        filepath varchar(255) NOT NULL default '',
+        revision varchar(255) NOT NULL default '',
+        PRIMARY KEY (cid, filepath)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      break;
+
+    case 'pgsql':
+      break;
+  }
+}
