@@ -38,6 +38,7 @@ function versioncontrol_cvs_install() {
 
       db_query("CREATE TABLE {versioncontrol_cvs_file_revisions} (
         commit_id int unsigned NOT NULL default '0',
+        type tinyint NOT NULL default '0',
         filepath varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
         action tinyint unsigned NOT NULL default '0',
