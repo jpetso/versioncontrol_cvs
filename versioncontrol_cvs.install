@@ -40,6 +40,8 @@ function versioncontrol_cvs_install() {
         commit_id int unsigned NOT NULL default '0',
         filepath varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
+        action tinyint unsigned NOT NULL default '0',
+        source_commit_id int unsigned NOT NULL default '0',
         PRIMARY KEY (commit_id, filepath)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
