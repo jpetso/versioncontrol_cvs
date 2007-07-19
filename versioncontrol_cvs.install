@@ -36,7 +36,7 @@ function versioncontrol_cvs_install() {
 
       db_query("CREATE TABLE {versioncontrol_cvs_commits} (
         commit_id int unsigned NOT NULL default '0',
-        branch_id varchar(255) NOT NULL default '',
+        branch_id int unsigned NOT NULL default '0',
         PRIMARY KEY (commit_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
@@ -86,9 +86,9 @@ function versioncontrol_cvs_uninstall() {
                       WHERE r.vcs = 'cvs'");
   $commit_ids = array();
   $commid_id_constraints = array();
-  while ($commit_id = db_result($result)) {
+  while ($commit = db_fetch_object($result)) {
     $commid_id_constraints[] = "commit_id = '%d'";
-    $commit_ids[] = $commit_id;
+    $commit_ids[] = $commit->commit_id;
   }
   if (!empty($commit_ids)) {
     db_query('DELETE FROM {versioncontrol_commits}

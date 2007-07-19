@@ -49,7 +49,7 @@ function versioncontrol_cvs_versioncontrol_backends() {
 
       // An array listing which tables should be managed by Version Control API
       // instead of doing it manually in the backend.
-      'autoadd' => array(
+      'flags' => array(
         // versioncontrol_insert_commit() will automatically insert
         // array elements from $commit['cvs_specific'] into
         // {versioncontrol_cvs_commits} and versioncontrol_get_commits()
@@ -271,4 +271,5 @@ function _versioncontrol_cvs_get_branches($constraints = array()) {
   while ($branch = db_fetch_object($result)) {
     $branches[$branch->branch_id] = $branch->name;
   }
+  return $branches;
 }

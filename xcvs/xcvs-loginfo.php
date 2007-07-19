@@ -33,10 +33,10 @@ function xcvs_is_last_directory($logfile, $dir) {
 
 function xcvs_get_commit_action($file_entry) {
   if ($file_entry) {
-    list($path, $old, $new) = explode(":", $file_entry);
+    list($path, $old, $new) = explode(",", $file_entry);
 
     if ($old == 'dir') { // directories can only be added in CVS
-      return array(
+      $action = array(
         'action' => VERSIONCONTROL_ACTION_ADDED,
         'current item' => array(
           'type' => VERSIONCONTROL_ITEM_DIRECTORY,
@@ -44,6 +44,7 @@ function xcvs_get_commit_action($file_entry) {
           'revision' => NULL,
         ),
       );
+      return array($path, $action);
     }
 
     $action = array();
@@ -97,7 +98,7 @@ function xcvs_parse_log($input_stream) {
   while (!feof($input_stream)) {
     $message .= fgets($input_stream);
   }
-  $message = preg_replace('/^/m', '  ', trim($message)); // format log message
+  $message = trim($message);
 
   return array($branch, $message);
 }
@@ -118,16 +119,12 @@ function xcvs_init($argc, $argv) {
     exit(2);
   }
 
-
-  fwrite(STDERR, "Loading configuration file $config_file.\n");
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
     fwrite(STDERR, "Error: failed to load configuration file.\n");
     exit(3);
   }
   include_once $config_file;
-
-  fwrite(STDERR, "Mmkay, we got the following argv:\n\n". print_r($original_argv, TRUE) ."\n");
 
   // Check temporary file storage.
   $tempdir = preg_replace('/\/+$/', '', $xcvs['temp']); // strip trailing slashes
@@ -143,15 +140,14 @@ function xcvs_init($argc, $argv) {
     // Write the changed items to a temporary log file, one by one.
     if (!empty($argv)) {
       if ($argv[0] == '- New directory') {
-        xcvs_log_add($summary, "/$commitdir:dir\n", 'a');
+        xcvs_log_add($summary, "/$commitdir,dir\n", 'a');
       }
       else {
         while (!empty($argv)) {
           $filename = array_shift($argv);
           $old = array_shift($argv);
           $new = array_shift($argv);
-          fwrite(STDERR, "Writing summary: /$commitdir/$filename:$old:$new\n");
-          xcvs_log_add($summary, "/$commitdir/$filename:$old:$new\n", 'a');
+          xcvs_log_add($summary, "/$commitdir/$filename,$old,$new\n", 'a');
         }
       }
     }
@@ -171,7 +167,9 @@ function xcvs_init($argc, $argv) {
       while (!feof($fd)) {
         $file_entry = trim(fgets($fd));
         list($path, $action) = xcvs_get_commit_action($file_entry);
-        $commit_actions[$path] = $action;
+        if ($path) {
+          $commit_actions[$path] = $action;
+        }
       }
       fclose($fd);
 
@@ -188,8 +186,8 @@ function xcvs_init($argc, $argv) {
           }
 
           $current_rev = $action['current item']['revision'];
-          $path = trim($path, '/');
-          exec("/usr/bin/cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $path", $result_lines);
+          $trimmed_path = trim($path, '/');
+          exec("/usr/bin/cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $result_lines);
 
           $matches = array();
           foreach ($result_lines as $line) {
@@ -207,19 +205,15 @@ function xcvs_init($argc, $argv) {
         // Get the remaining info from the commit log that we get from STDIN.
         list($branch_name, $message) = xcvs_parse_log(STDIN);
 
-        fwrite(STDERR, "db_query exists: ". (function_exists('db_query') ? "true" : "false") ."\n");
-        fwrite(STDERR, "db_result exists: ". (function_exists('db_result') ? "true" : "false") ."\n");
-        fwrite(STDERR, "versioncontrol_get_commits exists: ". (function_exists('versioncontrol_get_commits') ? "true" : "false") ."\n");
-        fwrite(STDERR, "versioncontrol_insert_commit exists: ". (function_exists('versioncontrol_insert_commit') ? "true" : "false") ."\n");
-
         // Map the username to the Drupal user id. We don't need to do this,
         // but by doing so we can avoid a few indirections that the
         // Version Control API would need to go through.
-        $uid = db_result(db_query("SELECT uid FROM {cvs_accounts}
+        $uid = db_result(db_query("SELECT uid FROM {versioncontrol_cvs_accounts}
                                    WHERE repo_id = '%d' AND username = '%s'",
                                   $xcvs['repo_id'], $username));
-
-        fwrite(STDERR, "Commit on branch $branch_name, uid $uid.\n");
+        if (!$uid) {
+          $uid = 0;
+        }
 
         // Get the branch id, and insert the branch into the database
         // if it doesn't exist yet.
@@ -246,9 +240,7 @@ function xcvs_init($argc, $argv) {
             'branch_id' => $branch_id,
           ),
         );
-        fwrite(STDERR, "Sending the commit to Version Control API, as follows:\n\n".
-                       print_r($commit, TRUE) ."\n");
-        versioncontrol_insert_commit($commit);
+        versioncontrol_insert_commit($commit, $commit_actions);
 
         // TODO: tag checking in project node integration?
       }

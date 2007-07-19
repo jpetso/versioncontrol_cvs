@@ -1,4 +1,3 @@
-#!/usr/bin/php
 <?php
 // $Id$
 /**
@@ -7,6 +6,7 @@
  *
  * Copyright 2005 by Kjartan ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
+ * Copyright 2007 by Adam Light ("aclight", http://drupal.org/user/86358)
  * Copyright 2007 by Jakob Petsovits <jpetso@gmx.at>
  */
 
@@ -16,9 +16,6 @@
 
 // Base path of drupal directory (no trailing slash)
 $xcvs['drupal_path'] = '/home/username/public_html';
-
-// Location of the versioncontrol-bootstrap.php file.
-$xcvs['bootstrap_path'] = $xcvs['drupal_path'] .'/sites/all/modules/versioncontrol/hooks/versioncontrol-bootstrap.php';
 
 // File location where to store temporary files.
 $xcvs['temp'] = "/tmp";
@@ -58,17 +55,28 @@ $xcvs["logs_combine"] = TRUE;
 // ------------------------------------------------------------
 // Internal code
 // ------------------------------------------------------------
-$stderr = fopen("php://stderr", "w");
 
-// Bootstrap Drupal, providing module functions and database abstraction.
-if (!file_exists($xcvs['bootstrap_path'])) {
-  fwrite($stderr, "Error: failed to load Version Control API's bootstrap file.\n");
-  exit(1);
+function bootstrap($drupal_path) {
+  // add $drupal_path to current value of the PHP include_path
+  set_include_path(get_include_path() . PATH_SEPARATOR . $drupal_path);
+
+  $current_directory = getcwd();
+  chdir($drupal_path);
+
+  // bootstrap Drupal so we can use drupal functions to access the databases, etc.
+  if (!file_exists('./includes/bootstrap.inc')) {
+    fwrite(STDERR, "Error: failed to load Drupal's bootstrap.inc file.\n");
+    exit(1);
+  }
+  require_once './includes/bootstrap.inc';
+  drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
+
+  chdir($current_directory);
 }
-include_once $xcvs['bootstrap_path'];
-versioncontrol_bootstrap($xcvs['drupal_path'], DRUPAL_BOOTSTRAP_FULL);
 
-// $xcvs has to be made global so the xcvs-taginfo.php
-// script works properly.
+// First thing to do: bootstrap Drupal.
+bootstrap($xcvs['drupal_path']);
+
+// $xcvs has to be made global so the xcvs-taginfo.php script works properly.
 global $xcvs_global;
 $xcvs_global = $xcvs;
