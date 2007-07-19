@@ -51,6 +51,9 @@ $xcvs['repo_id'] = 1;
 // and information to provide Version Control API integration?
 $xcvs['versioncontrol'] = TRUE;
 
+// Combine the commit log messages for a multidir commit into one mail.
+$xcvs["logs_combine"] = TRUE;
+
 
 // ------------------------------------------------------------
 // Internal code
