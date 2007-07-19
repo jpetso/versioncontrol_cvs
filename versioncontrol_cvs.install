@@ -7,10 +7,7 @@
  *
  * Copyright 2006 by Karthik ("Zen", http://drupal.org/user/21209)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
- * Copyright 2007 by Jakob Petsovits <jpetso@gmx.at>
- *
- * Distributed under the GNU General Public Licence version 2 or higher,
- * as published by the FSF on http://www.gnu.org/copyleft/gpl.html
+ * Copyright 2007 by Jakob Petsovits (http://drupal.org/user/56020)
  */
 
 /**
@@ -22,10 +19,11 @@ function versioncontrol_cvs_install() {
     case 'mysql':
       db_query("CREATE TABLE {versioncontrol_cvs_accounts} (
         uid int unsigned NOT NULL default '0',
+        repo_id int unsigned NOT NULL default '0',
         username varchar(64) NOT NULL default '',
         password varchar(64) NOT NULL default '',
-        PRIMARY KEY (name),
-        KEY uid (uid)
+        PRIMARY KEY (uid, repo_id),
+        UNIQUE KEY (repo_id, username)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_repositories} (
@@ -36,14 +34,30 @@ function versioncontrol_cvs_install() {
         PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
-      db_query("CREATE TABLE {versioncontrol_cvs_file_revisions} (
+      db_query("CREATE TABLE {versioncontrol_cvs_commits} (
+        commit_id int unsigned NOT NULL default '0',
+        branch_id varchar(255) NOT NULL default '',
+        PRIMARY KEY (commit_id)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_branches} (
+        branch_id int unsigned NOT NULL default '0',
+        name varchar(255) NOT NULL default '',
+        PRIMARY KEY (branch_id),
+        UNIQUE KEY (name)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
         commit_id int unsigned NOT NULL default '0',
         type tinyint NOT NULL default '0',
-        filepath varchar(255) NOT NULL default '',
-        revision varchar(255) NOT NULL default '',
+        path varchar(255) NOT NULL default '',
+        revision varchar(255) default '',
         action tinyint unsigned NOT NULL default '0',
-        source_commit_id int unsigned NOT NULL default '0',
-        PRIMARY KEY (commit_id, filepath)
+        lines_added smallint unsigned NOT NULL default '0',
+        lines_removed smallint unsigned NOT NULL default '0',
+        source_revision varchar(255) default '',
+        PRIMARY KEY (commit_id, path)
+        UNIQUE (path, revision)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       break;
@@ -51,4 +65,36 @@ function versioncontrol_cvs_install() {
     case 'pgsql':
       break;
   }
+}
+
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function versioncontrol_cvs_uninstall() {
+  db_query("DROP TABLE {versioncontrol_cvs_accounts}");
+  db_query("DROP TABLE {versioncontrol_cvs_repositories}");
+  db_query("DROP TABLE {versioncontrol_cvs_commits}");
+  db_query("DROP TABLE {versioncontrol_cvs_branches}");
+  db_query("DROP TABLE {versioncontrol_cvs_item_revisions}");
+
+  // We need to delete all commits for CVS repositories,
+  // but I'm not sure if it's possible to join in DELETE statements,
+  // so fetch the commit ids separately.
+  $result = db_query("SELECT c.commit_id
+                      FROM {versioncontrol_commits} c
+                       INNER JOIN {versioncontrol_repositories} r ON c.repo_id = r.repo_id
+                      WHERE r.vcs = 'cvs'");
+  $commit_ids = array();
+  $commid_id_constraints = array();
+  while ($commit_id = db_result($result)) {
+    $commid_id_constraints[] = "commit_id = '%d'";
+    $commit_ids[] = $commit_id;
+  }
+  if (!empty($commit_ids)) {
+    db_query('DELETE FROM {versioncontrol_commits}
+              WHERE '. implode(' OR ', $commit_id_constraints), $commit_ids);
+  }
+
+  db_query("DELETE FROM {versioncontrol_repositories} WHERE vcs = 'cvs'");
 }

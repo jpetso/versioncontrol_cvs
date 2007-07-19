@@ -1,0 +1,274 @@
+<?php
+// $Id$
+/**
+ * @file
+ * CVS backend for Version Control API - Provides CVS commit information and
+ * account management as a pluggable backend.
+ *
+ * Copyright 2007 by Jakob Petsovits (http://drupal.org/user/56020)
+ */
+
+/**
+ * Implementation of hook_versioncontrol_backends().
+ *
+ * @return
+ *   A structured array containing information about this known backends.
+ *   Array key is the unique string identifier of the version control system.
+ *   The corresponding array values are again structured arrays and consist
+ *   of elements with the following keys:
+ *
+ *   'name': The user-visible name of the VCS.
+ *   'description': A short description of the backend, if possible not longer
+ *                  than one or two sentences.
+ *   'capabilities': An array listing optional capabilities, in addition to the
+ *                   required functionality like retrieval of detailed
+ *                   commit information. Array values can be an arbitrary
+ *                   combination of VERSIONCONTROL_CAPABILITY_* values. If no
+ *                   additional capabilities are supported by the backend,
+ *                   this array will be empty.
+ *   'autoadd': An array listing which tables should be managed by
+ *              Version Control API instead of doing it manually in
+ *              the backend. Array values can be an arbitrary combination of
+ *              VERSIONCONTROL_AUTOADD_* values. If no array additions
+ *              should be automatically managed, this array will be empty.
+ */
+function versioncontrol_cvs_versioncontrol_backends() {
+  return array(
+    // The array key is up to 8 characters long, and used as unique identifier
+    // for this VCS, in functions, URLs and in the database.
+    'cvs' => array(
+      // The user-visible name of the VCS.
+      'name' => 'CVS',
+
+      // A short description of the VCS, if possible not longer than one or two sentences.
+      'description' => t('CVS (Concurrent Versions System) is a slightly older code management system that supports file revisions, tags and branches, but lacks atomic commits, advanced merge functionality and support for renaming items.'),
+
+      // A list of optional capabilities, in addition to the required retrieval
+      // of detailed commit information.
+      'capabilities' => array(),
+
+      // An array listing which tables should be managed by Version Control API
+      // instead of doing it manually in the backend.
+      'autoadd' => array(
+        // versioncontrol_insert_commit() will automatically insert
+        // array elements from $commit['cvs_specific'] into
+        // {versioncontrol_cvs_commits} and versioncontrol_get_commits()
+        // will automatically fetch it from there.
+        VERSIONCONTROL_FLAG_AUTOADD_COMMITS,
+      ),
+    ),
+  );
+}
+
+
+/**
+ * Implementation of [versioncontrol_backend]_get_authors_by_uid():
+ * Retrieve a Drupal uid / CVS username mapping given a set of user ids.
+ * Non-existing uids are discarded and don't appear in the result value.
+ *
+ * @param $uid_list
+ *   An array containing Drupal user ids.
+ * @param $repositories
+ *   An array of structured arrays containing repository information,
+ *   presumably a subset of what is returned by versioncontrol_get_repositories().
+ *   If given, only usernames of this specific repository are retrieved.
+ *
+ * @return
+ *   A structured array that looks like
+ *   array($drupal_uid => array($repo_id => 'CVS username', ...), ...).
+ *   If no system specific CVS usernames correlate to the given uids,
+ *   an empty array is returned.
+ */
+function versioncontrol_fakevcs_get_authors_by_uid($uid_list, $repositories = NULL) {
+  $and_constraints = array();
+  $params = $uid_list;
+
+  // Filter by Drupal user id.
+  $uid_constraints = array();
+  foreach ($uid_list as $uid) {
+    $uid_constraints[] = "uid = '%d'";
+  }
+  $and_constraints[] = '('. implode(' OR ', $uid_constraints) .')';
+
+  // Filter by repository id.
+  if (isset($repositories)) {
+    $repo_constraints = array();
+    foreach ($repositories as $repo_id => $repository) {
+      $repo_constraints[] = "repo_id = '%d'";
+      $params[] = $repo_id;
+    }
+    $and_constraints[] = '('. implode(' OR ', $repo_constraints) .')';
+  }
+
+  // Execute the query.
+  $result = db_query('SELECT uid, repo_id, username
+                      FROM {versioncontrol_cvs_accounts}
+                      WHERE '. implode(' AND ', $and_constraints), $params);
+
+  // Assemble the $authors return value.
+  return _versioncontrol_cvs_get_authors($result);
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_authors_by_username():
+ * Retrieve a Drupal uid / CVS username mapping given a set of usernames.
+ * Non-existing usernames are discarded and don't appear in the result value.
+ *
+ * @param $usernames_by_repository
+ *   An array containing system specific CVS usernames. Specified separately
+ *   for each repository, like array($repo_id => array('dww', 'jpetso'), ...).
+ * @param $repositories
+ *   A list of all repository arrays that the $usernames_by_repository
+ *   references with its repo_id keys. Not used by the CVS backend.
+ *
+ * @return
+ *   A structured array that looks like
+ *   array($drupal_uid => array($repo_id => 'CVS username', ...), ...).
+ *   If no Drupal uids correlate to the given usernames,
+ *   an empty array is returned.
+ */
+function versioncontrol_fakevcs_get_authors_by_username($usernames_by_repository, $repositories) {
+  // Assemble the query parts.
+  $or_constraints = array();
+  $params = array();
+
+  foreach ($usernames_by_repository as $repo_id => $usernames) {
+    $repo_constraint = "repo_id = '%d'";
+    $params[] = $repo_id;
+
+    $username_constraints = array();
+    foreach ($usernames as $username) {
+      $username_constraints[] = "username = '%s'";
+      $params[] = $username;
+    }
+
+    $or_constraints[] = '('. $repo_constraint
+                        .' AND ('. implode(' OR ', $username_constraints) .'))';
+  }
+
+  // Execute the query.
+  $result = db_query('SELECT uid, repo_id, username
+                      FROM {versioncontrol_cvs_accounts}
+                      WHERE '. implode(' OR ', $or_constraints), $params);
+
+  // Assemble the $authors return value.
+  return _versioncontrol_cvs_get_authors($result);
+}
+
+/**
+ * Assemble the $authors return value - centralized for code sharing.
+ */
+function _versioncontrol_cvs_get_authors($database_result) {
+  $authors = array();
+  while ($account = db_fetch_object($database_result)) {
+    if (!isset($authors[$account->uid])) {
+      $authors[$account->uid] = array();
+    }
+    $authors[$account->uid][$account->repo_id] = $account->username;
+  }
+  return $authors;
+}
+
+
+/**
+ * Implementation of [versioncontrol_backend]_insert_commit():
+ * Insert additional commit data into the database.
+ *
+ * @param $commit
+ *   A single commit array, like the ones returned
+ *   by versioncontrol_get_commits().
+ * @param $commit_actions
+ *   A structured array containing the exact details of what happened to
+ *   each item in this commit. The structure of this array is the same as
+ *   the return value of versioncontrol_get_commit_actions().
+ */
+function versioncontrol_cvs_insert_commit($commit, $commit_actions) {
+  foreach ($commit_actions as $path => $action) {
+    $revision = NULL;
+    $source_revision = NULL;
+
+    // If available, get item type and revision from the contained items.
+    if (isset($action['current item'])) {
+      $type = $action['current item']['type'];
+      $revision = $action['current item']['revision'];
+    }
+    if (isset($action['source items'])) {
+      $type = $action['source items'][0]['type']; // only one source item for CVS
+      $source_revision = $action['source items'][0]['revision'];
+    }
+
+    db_query(
+      "INSERT INTO {versioncontrol_cvs_item_revisions}
+       (commit_id, type, path, revision, action, lines_added, lines_removed, source_revision)
+       VALUES ('%d', '%d', '%s', '%s', '%d', '%d', '%d', '%d')",
+      $commit['commit_id'], $type, $path, $revision, $action['action'],
+      $action['cvs_specific']['lines_added'], $action['cvs_specific']['lines_removed'],
+      $source_revision
+    );
+  }
+}
+
+/**
+ * Insert a branch into the {versioncontrol_cvs_branches} table.
+ * No checking is done whether the branch already exists or not.
+ *
+ * @return
+ *   The branch id of the newly inserted branch entry.
+ */
+function _versioncontrol_cvs_insert_branch($name) {
+  $branch_id = db_next_id('{versioncontrol_cvs_branches}_branch_id');
+  db_query("INSERT INTO {versioncontrol_cvs_branches} (branch_id, name)
+            VALUES ('%d', '%s')", $branch_id, $name);
+  return $branch_id;
+}
+
+/**
+ * Retrieve one or more entries from the {versioncontrol_cvs_branches} table.
+ *
+ * @param $constraints
+ *   An optional array of constraints. Possible array elements are:
+ *
+ *   'branch_ids': An array of branch ids.
+ *   'names': An array of branch names.
+ *
+ * @return
+ *   A mapping of branch ids to their respective names, like
+ *   array($branch_id => $branch_name, ...).
+ */
+function _versioncontrol_cvs_get_branches($constraints = array()) {
+  $and_constraints = array();
+  $params = array();
+
+  if (isset($constraints['branch_ids'])) {
+    $or_constraints = array();
+    foreach ($constraints['branch_ids'] as $id) {
+      $or_constraints[] = "branch_id = '%d'";
+      $params[] = $id;
+    }
+    $and_constraints[] = '('. implode(" OR ", $or_constraints) .')';
+  }
+
+  if (isset($constraints['names'])) {
+    $or_constraints = array();
+    foreach ($constraints['names'] as $name) {
+      $or_constraints[] = "name = '%s'";
+      $params[] = $name;
+    }
+    $and_constraints[] = '('. implode(' OR ', $or_constraints) .')';
+  }
+
+  // All constraints have been gathered, execute the query now.
+  if (empty($and_constraints)) {
+    $result = db_query('SELECT * FROM {versioncontrol_cvs_branches}');
+  }
+  else {
+    $result = db_query('SELECT * FROM {versioncontrol_cvs_branches}
+                        WHERE '. implode(' AND ', $and_constraints), $params);
+  }
+
+  // Assemble the return value.
+  $branches = array();
+  while ($branch = db_fetch_object($result)) {
+    $branches[$branch->branch_id] = $branch->name;
+  }
+}
