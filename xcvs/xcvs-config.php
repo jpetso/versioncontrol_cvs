@@ -59,11 +59,11 @@ $stderr = fopen("php://stderr", "w");
 
 // Bootstrap Drupal, providing module functions and database abstraction.
 if (!file_exists($xcvs['bootstrap_path'])) {
-  fwrite($stderr, "Error: failed to load Version Control API's bootstrap file.");
+  fwrite($stderr, "Error: failed to load Version Control API's bootstrap file.\n");
   exit(1);
 }
 include_once $xcvs['bootstrap_path'];
-versioncontrol_bootstrap(DRUPAL_BOOTSTRAP_FULL);
+versioncontrol_bootstrap($xcvs['drupal_path'], DRUPAL_BOOTSTRAP_FULL);
 
 // $xcvs has to be made global so the xcvs-taginfo.php
 // script works properly.

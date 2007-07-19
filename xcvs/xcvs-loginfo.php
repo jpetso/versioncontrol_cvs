@@ -170,7 +170,7 @@ function xcvs_init($argc, $argv) {
       if ($xcvs['versioncontrol'] && !empty($commit_actions)) {
         // Find out how many lines have been added and removed for each file.
         foreach ($commit_actions as $path => $action) {
-          if (!isset($action['current item']) {
+          if (!isset($action['current item'])) {
             continue;
           }
 
@@ -218,7 +218,7 @@ function xcvs_init($argc, $argv) {
         $commit = array(
           'repo_id' => $xcvs['repo_id'],
           'date' => time(),
-          'uid' => $uid;
+          'uid' => $uid,
           'username' => $username,
           'message' => $message,
           'revision' => NULL,
