@@ -200,7 +200,7 @@ function versioncontrol_cvs_insert_commit($commit, $commit_actions) {
     db_query(
       "INSERT INTO {versioncontrol_cvs_item_revisions}
        (commit_id, type, path, revision, action, lines_added, lines_removed, source_revision)
-       VALUES ('%d', '%d', '%s', '%s', '%d', '%d', '%d', '%d')",
+       VALUES ('%d', '%d', '%s', '%s', '%d', '%d', '%d', '%s')",
       $commit['commit_id'], $type, $path, $revision, $action['action'],
       $action['cvs_specific']['lines_added'], $action['cvs_specific']['lines_removed'],
       $source_revision

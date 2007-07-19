@@ -192,7 +192,7 @@ function xcvs_init($argc, $argv) {
           $matches = array();
           foreach ($result_lines as $line) {
             // 'date: 2004/08/20 07:51:22;  author: dries;  state: Exp;  lines: +2 -2'
-            if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+)$/', $line, $matches)) {
+            if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+).*$/', $line, $matches)) {
               break;
             }
           }
