@@ -179,6 +179,9 @@ function xcvs_init($argc, $argv) {
 
       // Integrate with the Drupal Version Control API.
       if ($xcvs['versioncontrol'] && !empty($commit_actions)) {
+        // Do a full Drupal bootstrap.
+        xcvs_bootstrap($xcvs['drupal_path']);
+
         // Find out how many lines have been added and removed for each file.
         foreach ($commit_actions as $path => $action) {
           if (!isset($action['current item'])) {

@@ -56,7 +56,7 @@ $xcvs["logs_combine"] = TRUE;
 // Internal code
 // ------------------------------------------------------------
 
-function bootstrap($drupal_path) {
+function xcvs_bootstrap($drupal_path) {
   // add $drupal_path to current value of the PHP include_path
   set_include_path(get_include_path() . PATH_SEPARATOR . $drupal_path);
 
@@ -73,9 +73,6 @@ function bootstrap($drupal_path) {
 
   chdir($current_directory);
 }
-
-// First thing to do: bootstrap Drupal.
-bootstrap($xcvs['drupal_path']);
 
 // $xcvs has to be made global so the xcvs-taginfo.php script works properly.
 global $xcvs_global;
