@@ -217,12 +217,15 @@ function xcvs_init($argc, $argv) {
 
         // Get the branch id, and insert the branch into the database
         // if it doesn't exist yet.
-        $branches = _versioncontrol_cvs_get_branches(array(
+        $branches_by_repository = _versioncontrol_cvs_get_branches(array(
+          'repo_ids' => array($xcvs['repo_id']),
           'names' => array($branch_name),
         ));
-        foreach ($branches as $id => $name) {
-          $branch_id = $id;
-          break; // we only asked for one branch name, so there's only one result
+        foreach ($branches_by_repository as $repo_id => $branches) {
+          // we asked for one branch in one repository, so there's only one result
+          foreach ($branches as $id => $name) {
+            $branch_id = $id;
+          }
         }
         if (!isset($branch_id)) {
           $branch_id = _versioncontrol_cvs_insert_branch($branch_name);
