@@ -5,7 +5,7 @@
  * CVS backend for Version Control API - Provides CVS commit information and
  * account management as a pluggable backend.
  *
- * Copyright 2007 by Jakob Petsovits (http://drupal.org/user/56020)
+ * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 
 /**
@@ -171,6 +171,108 @@ function _versioncontrol_cvs_get_authors($database_result) {
 
 
 /**
+ * Implementation of [versioncontrol_backend]_get_commit_actions():
+ * Retrieves detailed information about what happened in a single commit.
+ *
+ * @param $commit
+ *   The commit whose actions should be retrieved.
+ *
+ * @return
+ *   A structured array containing the exact details of what happened to
+ *   each item in this commit. Array keys are the current/new paths, also for
+ *   VERSIONCONTROL_ACTION_DELETED actions even if the file actually doesn't
+ *   exist anymore. The corresponding array values are again structured arrays
+ *   and consist of elements with the following keys:
+ *
+ *   'action': Specifies how the item was modified.
+ *             One of the predefined VERSIONCONTROL_ACTION_* values.
+ *   'modified': Boolean value, specifies if a file was modified in addition
+ *               to the other action in the 'action' element of the array.
+ *               Only exists for the VERSIONCONTROL_ACTION_MOVED
+ *               and VERSIONCONTROL_ACTION_COPIED actions.
+ *   'current item': The updated state of the modified item. Exists for all
+ *                   actions except VERSIONCONTROL_ACTION_DELETED.
+ *   'source items': An array with the previous state(s) of the modified item.
+ *                   Path and branch will always be the same as in the current
+ *                   item except for the VERSIONCONTROL_ACTION_MOVED,
+ *                   VERSIONCONTROL_ACTION_COPIED and
+ *                   VERSIONCONTROL_ACTION_MERGED actions.
+ *                   Exists for all actions except VERSIONCONTROL_ACTION_ADDED.
+ *
+ *   Item values are structured arrays and consist of elements
+ *   with the following keys:
+ *
+ *   'type': Specifies the item type, which is either
+ *           VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
+ *   'path': The path of the item at the specific revision.
+ *   'revision': The (file-level) revision when the item was changed.
+ *               If there is no such revision (which may be the case for
+ *               directory items) then the 'revision' element is NULL.
+ *   '[xxx]_specific': May be set by the backend to remember additional
+ *                     item info. ("[xxx]" is the unique string identifier
+ *                     of the respective version control system.)
+ */
+function versioncontrol_cvs_get_commit_actions($commit) {
+  $actions = array();
+  $result = db_query("SELECT * FROM {versioncontrol_cvs_item_revisions}
+                      WHERE commit_id = '%d'", $commit['commit_id']);
+
+  while ($item_revision = db_fetch_object($result)) {
+    $action = array(
+      'type' => $item_revision->action,
+    );
+
+    if ($item_revision->action != VERSIONCONTROL_ACTION_DELETED) {
+      $action['current item'] = array(
+        'type' => $item_revision->type,
+        'path' => $item_revision->path,
+        'revision' => $item_revision->revision,
+        'cvs_specific' => array(
+          'selected branch' => $commit['cvs_specific']['branch_id']
+          'selected date' => $commit['date'],
+        ),
+      );
+    }
+    if ($item_revision->action != VERSIONCONTROL_ACTION_ADDED) {
+      $action['source items'] = array(array(
+        'type' => $item_revision->type,
+        'path' => $item_revision->path,
+        'revision' => $item_revision->source_revision,
+        'cvs_specific' => array(
+          'selected branch' => $commit['cvs_specific']['branch_id']
+          'selected date' => $commit['date'],
+        ),
+      ));
+    }
+
+    $actions[$item_revision->path] = $action;
+  }
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_commit_branches():
+ * Retrieve the branches that have been affected by the given commit.
+ *
+ * @return
+ *   An array of strings that identify a branch in the respective repository,
+ *   or an empty array if no branches were affected at all. (For CVS, there
+ *   should always be a exactly one branch in the resulting array.)
+ */
+function versioncontrol_cvs_get_commit_branches($commit) {
+  $branches_by_repository = _versioncontrol_cvs_get_branches(array(
+    'branch_ids' => array($commit['branch_id']),
+  );
+  foreach ($branches_by_repository as $repo_id => $branches) {
+    // we asked for one branch in one repository, so there's only one result
+    foreach ($branches as $id => $name) {
+      return array($name);
+    }
+  }
+  return NULL; // should only happen in case of database inconsistencies
+}
+
+
+/**
  * Implementation of [versioncontrol_backend]_insert_commit():
  * Insert additional commit data into the database.
  *
@@ -215,10 +317,10 @@ function versioncontrol_cvs_insert_commit($commit, $commit_actions) {
  * @return
  *   The branch id of the newly inserted branch entry.
  */
-function _versioncontrol_cvs_insert_branch($name) {
+function _versioncontrol_cvs_insert_branch($repo_id, $name) {
   $branch_id = db_next_id('{versioncontrol_cvs_branches}_branch_id');
-  db_query("INSERT INTO {versioncontrol_cvs_branches} (branch_id, name)
-            VALUES ('%d', '%s')", $branch_id, $name);
+  db_query("INSERT INTO {versioncontrol_cvs_branches} (branch_id, repo_id, name)
+            VALUES ('%d', '%d', '%s')", $branch_id, $repo_id, $name);
   return $branch_id;
 }
 
@@ -229,11 +331,12 @@ function _versioncontrol_cvs_insert_branch($name) {
  *   An optional array of constraints. Possible array elements are:
  *
  *   'branch_ids': An array of branch ids.
+ *   'repo_ids': An array of repository ids.
  *   'names': An array of branch names.
  *
  * @return
  *   A mapping of branch ids to their respective names, like
- *   array($branch_id => $branch_name, ...).
+ *   array($repo_id => array($branch_id => $branch_name, ...), ...).
  */
 function _versioncontrol_cvs_get_branches($constraints = array()) {
   $and_constraints = array();
@@ -241,9 +344,18 @@ function _versioncontrol_cvs_get_branches($constraints = array()) {
 
   if (isset($constraints['branch_ids'])) {
     $or_constraints = array();
-    foreach ($constraints['branch_ids'] as $id) {
+    foreach ($constraints['branch_ids'] as $branch_id) {
       $or_constraints[] = "branch_id = '%d'";
-      $params[] = $id;
+      $params[] = $branch_id;
+    }
+    $and_constraints[] = '('. implode(" OR ", $or_constraints) .')';
+  }
+
+  if (isset($constraints['repo_ids'])) {
+    $or_constraints = array();
+    foreach ($constraints['repo_ids'] as $repo_id) {
+      $or_constraints[] = "repo_id = '%d'";
+      $params[] = $repo_id;
     }
     $and_constraints[] = '('. implode(" OR ", $or_constraints) .')';
   }
@@ -269,7 +381,10 @@ function _versioncontrol_cvs_get_branches($constraints = array()) {
   // Assemble the return value.
   $branches = array();
   while ($branch = db_fetch_object($result)) {
-    $branches[$branch->branch_id] = $branch->name;
+    if (!isset($branches[$branch->repo_id])) {
+      $branches[$branch->repo_id] = array();
+    }
+    $branches[$branch->repo_id][$branch->branch_id] = $branch->name;
   }
   return $branches;
 }
