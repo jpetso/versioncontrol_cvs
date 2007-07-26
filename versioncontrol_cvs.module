@@ -172,7 +172,7 @@ function _versioncontrol_cvs_get_authors($database_result) {
 
 /**
  * Implementation of [versioncontrol_backend]_get_commit_actions():
- * Retrieves detailed information about what happened in a single commit.
+ * Retrieve detailed information about what happened in a single commit.
  *
  * @param $commit
  *   The commit whose actions should be retrieved.
@@ -228,7 +228,7 @@ function versioncontrol_cvs_get_commit_actions($commit) {
         'path' => $item_revision->path,
         'revision' => $item_revision->revision,
         'cvs_specific' => array(
-          'selected branch' => $commit['cvs_specific']['branch_id']
+          'selected branch' => $commit['cvs_specific']['branch_id'],
           'selected date' => $commit['date'],
         ),
       );
@@ -239,7 +239,7 @@ function versioncontrol_cvs_get_commit_actions($commit) {
         'path' => $item_revision->path,
         'revision' => $item_revision->source_revision,
         'cvs_specific' => array(
-          'selected branch' => $commit['cvs_specific']['branch_id']
+          'selected branch' => $commit['cvs_specific']['branch_id'],
           'selected date' => $commit['date'],
         ),
       ));
@@ -247,6 +247,43 @@ function versioncontrol_cvs_get_commit_actions($commit) {
 
     $actions[$item_revision->path] = $action;
   }
+
+  return $actions;
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_commit_directory_item():
+ * Retrieve the item of the deepest-level directory in the repository that is
+ * common to all the changed items in a commit. In other words, this function
+ * gets you the item for $commit['directory'].
+ *
+ * @param $commit
+ *   The commit whose deepest-level changed directory should be retrieved.
+ *
+ * @return
+ *   The requested directory item. Item values are structured arrays and
+ *   consist of elements with the following keys:
+ *
+ *   'type': Specifies the item type, which in this case can only be
+ *           VERSIONCONTROL_ITEM_DIRECTORY.
+ *   'path': The path of the directory at the time of the commit.
+ *   'revision': The (file-level) revision when the item was last changed.
+ *               If there is no such revision (which may be the case for
+ *               directory items) then the 'revision' element is NULL.
+ *   '[xxx]_specific': May be set by the backend to remember additional
+ *                     item info. ("[xxx]" is the unique string identifier
+ *                     of the respective version control system.)
+ */
+function versioncontrol_cvs_get_commit_directory_item($commit) {
+  return array(
+    'type' => VERSIONCONTROL_ITEM_DIRECTORY,
+    'path' => $commit['directory'],
+    'revision' => NULL,
+    'cvs_specific' => array(
+      'selected branch' => $commit['cvs_specific']['branch_id'],
+      'selected date' => $commit['date'],
+    ),
+  );
 }
 
 /**
@@ -259,16 +296,90 @@ function versioncontrol_cvs_get_commit_actions($commit) {
  *   should always be a exactly one branch in the resulting array.)
  */
 function versioncontrol_cvs_get_commit_branches($commit) {
+  if (!isset($commit['cvs_specific']['branch_id'])) {
+    return array();
+  }
   $branches_by_repository = _versioncontrol_cvs_get_branches(array(
-    'branch_ids' => array($commit['branch_id']),
-  );
+    'branch_ids' => array($commit['cvs_specific']['branch_id']),
+  ));
   foreach ($branches_by_repository as $repo_id => $branches) {
     // we asked for one branch in one repository, so there's only one result
     foreach ($branches as $id => $name) {
       return array($name);
     }
   }
-  return NULL; // should only happen in case of database inconsistencies
+  return array(); // should only happen in case of database inconsistencies
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_current_item_branch():
+ * Retrieve the current branch that this item is in. If this item was part of
+ * the result of versioncontrol_get_commit_actions(), this will probably be
+ * the branch that this item was committed to. If no specific branch is known
+ * or applicable for this item, NULL is returned. The main branch ('HEAD'
+ * for CVS) is also a valid branch and should be expected as return value.
+ *
+ * @param $repository
+ *   The repository that the item is located in.
+ * @param $item
+ *   The item whose current branch should be retrieved.
+ *
+ * @return
+ *   A string containing the current item branch, or NULL if no branch
+ *   is known or applicable.
+ */
+function versioncontrol_cvs_get_current_item_branch($repository, $item) {
+  if (!isset($item['cvs_specific']['selected branch'])) {
+    return NULL;
+  }
+
+  $branches_by_repository = _versioncontrol_cvs_get_branches(array(
+    'branch_ids' => array($item['cvs_specific']['selected branch']),
+  ));
+  foreach ($branches_by_repository as $repo_id => $branches) {
+    // we asked for one branch in one repository, so there's one result at maximum
+    foreach ($branches as $id => $name) {
+      return $name;
+    }
+  }
+  return NULL;
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_current_item_branch():
+ * Retrieve the current branch that this item is in. If this item was part of
+ * the result of versioncontrol_get_commit_actions(), this will probably be
+ * the branch that this item was committed to. If no specific branch is known
+ * or applicable for this item, NULL is returned. The main branch ('HEAD'
+ * for CVS) is also a valid branch and should be expected as return value.
+ *
+ * @param $repository
+ *   The repository that the item is located in.
+ * @param $item
+ *   The item whose current branch should be retrieved.
+ *
+ * @return
+ *   A string containing the current item branch, or NULL if no branch
+ *   is known or applicable.
+ */
+function versioncontrol_cvs_get_current_item_tag($repository, $item) {
+  if (!isset($item['cvs_specific']['selected tag'])) {
+    return NULL;
+  }
+
+  return NULL;
+  /* TODO: implement
+  $tags_by_repository = _versioncontrol_cvs_get_tags(array(
+    'tag_ids' => array($item['cvs_specific']['selected tag']),
+  ));
+  foreach ($tags_by_repository as $repo_id => $tags) {
+    // we asked for one tag in one repository, so there's one result at maximum
+    foreach ($tags as $id => $name) {
+      return $name;
+    }
+  }
+  return NULL;
+  */
 }
 
 
@@ -339,6 +450,23 @@ function _versioncontrol_cvs_insert_branch($repo_id, $name) {
  *   array($repo_id => array($branch_id => $branch_name, ...), ...).
  */
 function _versioncontrol_cvs_get_branches($constraints = array()) {
+  static $branch_cache_by_id = array();
+  $branches = array();
+
+  // Use the cache for branch-id-only queries.
+  if (isset($constraints['branch_ids']) && count($constraints) == 1) {
+    foreach ($constraints['branch_ids'] as $key => $branch_id) {
+      if (isset($branch_cache_by_id[$branch_id])) {
+        $branch = $branch_cache_by_id[$branch_id];
+        $branches[$branch['repo_id']][$branch['branch_id']] = $branch['name'];
+        unset($constraints['branch_ids'][$key]);
+      }
+    }
+    if (empty($constraints['branch_ids'])) {
+      return $branches;
+    }
+  }
+
   $and_constraints = array();
   $params = array();
 
@@ -379,12 +507,16 @@ function _versioncontrol_cvs_get_branches($constraints = array()) {
   }
 
   // Assemble the return value.
-  $branches = array();
   while ($branch = db_fetch_object($result)) {
     if (!isset($branches[$branch->repo_id])) {
       $branches[$branch->repo_id] = array();
     }
     $branches[$branch->repo_id][$branch->branch_id] = $branch->name;
+    $branch_cache_by_id[$branch->branch_id] = array(
+      'branch_id' => $branch->branch_id,
+      'repo_id'   => $branch->repo_id,
+      'name'      => $branch->name,
+    );
   }
   return $branches;
 }
