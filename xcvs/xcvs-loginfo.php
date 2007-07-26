@@ -51,10 +51,10 @@ function xcvs_get_commit_action($file_entry) {
 
     // If it's not a directory, it must be one of three possible file actions
     if ($old == 'NONE') {
-      $action['action'] = VERSIONCONTROL_ACTION_REMOVED;
+      $action['action'] = VERSIONCONTROL_ACTION_ADDED;
     }
     else if ($new == 'NONE') {
-      $action['action'] = VERSIONCONTROL_ACTION_ADDED;
+      $action['action'] = VERSIONCONTROL_ACTION_REMOVED;
     }
     else {
       $action['action'] = VERSIONCONTROL_ACTION_MODIFIED;
@@ -179,8 +179,6 @@ function xcvs_init($argc, $argv) {
 
       // Integrate with the Drupal Version Control API.
       if ($xcvs['versioncontrol'] && !empty($commit_actions)) {
-        // Do a full Drupal bootstrap.
-        xcvs_bootstrap($xcvs['drupal_path']);
 
         // Find out how many lines have been added and removed for each file.
         foreach ($commit_actions as $path => $action) {

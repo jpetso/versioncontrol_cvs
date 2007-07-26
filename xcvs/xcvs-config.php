@@ -74,6 +74,9 @@ function xcvs_bootstrap($drupal_path) {
   chdir($current_directory);
 }
 
+// Do a full Drupal bootstrap.
+xcvs_bootstrap($xcvs['drupal_path']);
+
 // $xcvs has to be made global so the xcvs-taginfo.php script works properly.
 global $xcvs_global;
 $xcvs_global = $xcvs;
