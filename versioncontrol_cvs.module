@@ -62,115 +62,6 @@ function versioncontrol_cvs_versioncontrol_backends() {
 
 
 /**
- * Implementation of [versioncontrol_backend]_get_authors_by_uid():
- * Retrieve a Drupal uid / CVS username mapping given a set of user ids.
- * Non-existing uids are discarded and don't appear in the result value.
- *
- * @param $uid_list
- *   An array containing Drupal user ids.
- * @param $repositories
- *   An array of structured arrays containing repository information,
- *   presumably a subset of what is returned by versioncontrol_get_repositories().
- *   If given, only usernames of this specific repository are retrieved.
- *
- * @return
- *   A structured array that looks like
- *   array($drupal_uid => array($repo_id => 'CVS username', ...), ...).
- *   If no system specific CVS usernames correlate to the given uids,
- *   an empty array is returned.
- */
-function versioncontrol_fakevcs_get_authors_by_uid($uid_list, $repositories = NULL) {
-  $and_constraints = array();
-  $params = $uid_list;
-
-  // Filter by Drupal user id.
-  $uid_constraints = array();
-  foreach ($uid_list as $uid) {
-    $uid_constraints[] = "uid = '%d'";
-  }
-  $and_constraints[] = '('. implode(' OR ', $uid_constraints) .')';
-
-  // Filter by repository id.
-  if (isset($repositories)) {
-    $repo_constraints = array();
-    foreach ($repositories as $repo_id => $repository) {
-      $repo_constraints[] = "repo_id = '%d'";
-      $params[] = $repo_id;
-    }
-    $and_constraints[] = '('. implode(' OR ', $repo_constraints) .')';
-  }
-
-  // Execute the query.
-  $result = db_query('SELECT uid, repo_id, username
-                      FROM {versioncontrol_cvs_accounts}
-                      WHERE '. implode(' AND ', $and_constraints), $params);
-
-  // Assemble the $authors return value.
-  return _versioncontrol_cvs_get_authors($result);
-}
-
-/**
- * Implementation of [versioncontrol_backend]_get_authors_by_username():
- * Retrieve a Drupal uid / CVS username mapping given a set of usernames.
- * Non-existing usernames are discarded and don't appear in the result value.
- *
- * @param $usernames_by_repository
- *   An array containing system specific CVS usernames. Specified separately
- *   for each repository, like array($repo_id => array('dww', 'jpetso'), ...).
- * @param $repositories
- *   A list of all repository arrays that the $usernames_by_repository
- *   references with its repo_id keys. Not used by the CVS backend.
- *
- * @return
- *   A structured array that looks like
- *   array($drupal_uid => array($repo_id => 'CVS username', ...), ...).
- *   If no Drupal uids correlate to the given usernames,
- *   an empty array is returned.
- */
-function versioncontrol_fakevcs_get_authors_by_username($usernames_by_repository, $repositories) {
-  // Assemble the query parts.
-  $or_constraints = array();
-  $params = array();
-
-  foreach ($usernames_by_repository as $repo_id => $usernames) {
-    $repo_constraint = "repo_id = '%d'";
-    $params[] = $repo_id;
-
-    $username_constraints = array();
-    foreach ($usernames as $username) {
-      $username_constraints[] = "username = '%s'";
-      $params[] = $username;
-    }
-
-    $or_constraints[] = '('. $repo_constraint
-                        .' AND ('. implode(' OR ', $username_constraints) .'))';
-  }
-
-  // Execute the query.
-  $result = db_query('SELECT uid, repo_id, username
-                      FROM {versioncontrol_cvs_accounts}
-                      WHERE '. implode(' OR ', $or_constraints), $params);
-
-  // Assemble the $authors return value.
-  return _versioncontrol_cvs_get_authors($result);
-}
-
-/**
- * Assemble the $authors return value - centralized for code sharing.
- */
-function _versioncontrol_cvs_get_authors($database_result) {
-  $authors = array();
-  while ($account = db_fetch_object($database_result)) {
-    if (!isset($authors[$account->uid])) {
-      $authors[$account->uid] = array();
-    }
-    $authors[$account->uid][$account->repo_id] = $account->username;
-  }
-  return $authors;
-}
-
-
-/**
  * Implementation of [versioncontrol_backend]_get_commit_actions():
  * Retrieve detailed information about what happened in a single commit.
  *
@@ -419,6 +310,28 @@ function versioncontrol_cvs_insert_commit($commit, $commit_actions) {
       $source_revision
     );
   }
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_insert_account():
+ * Insert additional CVS user account data into the database.
+ *
+ * @param $uid
+ *   The Drupal user id corresponding to the VCS account.
+ * @param $username
+ *   The VCS specific username (a string).
+ * @param $repository
+ *   The repository where the user has its VCS account.
+ * @param $cvs_specific
+ *   An array of CVS specific additional author information.
+ */
+function versioncontrol_cvs_insert_account($uid, $username, $repository, $cvs_specific = NULL) {
+  if (!is_array($cvs_specific) || !isset($cvs_specific['password'])) {
+    return;
+  }
+  db_query("INSERT INTO {versioncontrol_cvs_accounts} (repo_id, username, password)
+            VALUES ('%d', '%s', '%s')",
+            $repository['repo_id'], $username, $cvs_specific['password']);
 }
 
 /**

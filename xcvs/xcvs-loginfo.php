@@ -206,13 +206,8 @@ function xcvs_init($argc, $argv) {
         // Get the remaining info from the commit log that we get from STDIN.
         list($branch_name, $message) = xcvs_parse_log(STDIN);
 
-        // Map the username to the Drupal user id. We don't need to do this,
-        // but by doing so we can avoid a few indirections that the
-        // Version Control API would need to go through.
-        $uid = db_result(db_query("SELECT uid FROM {versioncontrol_cvs_accounts}
-                                   WHERE repo_id = '%d' AND username = '%s'",
-                                  $xcvs['repo_id'], $username));
-        if (!$uid) {
+        $uid = versioncontrol_get_account_uid_for_username($username, $xcvs['repo_id']);
+        if (!isset($uid)) {
           $uid = 0;
         }
 
