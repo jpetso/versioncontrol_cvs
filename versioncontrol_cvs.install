@@ -21,7 +21,7 @@ function versioncontrol_cvs_install() {
         repo_id int unsigned NOT NULL default '0',
         username varchar(64) NOT NULL default '',
         password varchar(64) NOT NULL default '',
-        PRIMARY KEY (repo_id, username),
+        PRIMARY KEY (repo_id, username)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_repositories} (
