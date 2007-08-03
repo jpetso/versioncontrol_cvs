@@ -112,7 +112,10 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
   $header[] = t('Last updated');
 
   foreach ($rows_by_repo_id as $repo_id => $row) {
-    $modules = $repositories[$repo_id]['cvs_specific']['modules'];
+    $modules = array();
+    foreach ($repositories[$repo_id]['cvs_specific']['modules'] as $module) {
+      $modules[] = check_plain($module);
+    }
     $rows_by_repo_id[$repo_id][] = theme('item_list', $modules);
 
     if ($repositories[$repo_id]['cvs_specific']['update_method'] == VERSIONCONTROL_CVS_UPDATE_XCVS) {
