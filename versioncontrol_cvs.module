@@ -287,9 +287,12 @@ function versioncontrol_cvs_get_current_item_tag($repository, $item) {
 
 
 /**
- * Implementation of [versioncontrol_backend]_insert_commit():
- * Insert additional commit data into the database.
+ * Implementation of [versioncontrol_backend]_commit():
+ * Manage (insert or delete) additional commit data in the database.
  *
+ * @param $op
+ *   Either 'insert' when the commit is in the process of being created,
+ *   or 'delete' if it will be deleted after this function has been called.
  * @param $commit
  *   A single commit array, like the ones returned
  *   by versioncontrol_get_commits().
@@ -298,36 +301,50 @@ function versioncontrol_cvs_get_current_item_tag($repository, $item) {
  *   each item in this commit. The structure of this array is the same as
  *   the return value of versioncontrol_get_commit_actions().
  */
-function versioncontrol_cvs_insert_commit($commit, $commit_actions) {
-  foreach ($commit_actions as $path => $action) {
-    $revision = NULL;
-    $source_revision = NULL;
+function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
+  switch ($op) {
+    case 'insert':
+      foreach ($commit_actions as $path => $action) {
+        $revision = NULL;
+        $source_revision = NULL;
 
-    // If available, get item type and revision from the contained items.
-    if (isset($action['current item'])) {
-      $type = $action['current item']['type'];
-      $revision = $action['current item']['revision'];
-    }
-    if (isset($action['source items'])) {
-      $type = $action['source items'][0]['type']; // only one source item for CVS
-      $source_revision = $action['source items'][0]['revision'];
-    }
+        // If available, get item type and revision from the contained items.
+        if (isset($action['current item'])) {
+          $type = $action['current item']['type'];
+          $revision = $action['current item']['revision'];
+        }
+        if (isset($action['source items'])) {
+          $type = $action['source items'][0]['type']; // only one source item for CVS
+          $source_revision = $action['source items'][0]['revision'];
+        }
 
-    db_query(
-      "INSERT INTO {versioncontrol_cvs_item_revisions}
-       (commit_id, type, path, revision, action, lines_added, lines_removed, source_revision)
-       VALUES ('%d', '%d', '%s', '%s', '%d', '%d', '%d', '%s')",
-      $commit['commit_id'], $type, $path, $revision, $action['action'],
-      $action['cvs_specific']['lines_added'], $action['cvs_specific']['lines_removed'],
-      $source_revision
-    );
+        db_query(
+          "INSERT INTO {versioncontrol_cvs_item_revisions}
+          (commit_id, type, path, revision, action, lines_added, lines_removed, source_revision)
+          VALUES ('%d', '%d', '%s', '%s', '%d', '%d', '%d', '%s')",
+          $commit['commit_id'], $type, $path, $revision, $action['action'],
+          $action['cvs_specific']['lines_added'], $action['cvs_specific']['lines_removed'],
+          $source_revision
+        );
+      }
+      break;
+
+    case 'delete':
+      db_query("DELETE FROM {versioncontrol_cvs_item_revisions}
+                WHERE commit_id = '%d'", $commit['commit_id']);
+      break;
   }
 }
 
 /**
- * Implementation of [versioncontrol_backend]_insert_account():
- * Insert additional CVS user account data into the database.
+ * Implementation of [versioncontrol_backend]_account():
+ * Manage (insert, update or delete) additional CVS user account data
+ * in the database.
  *
+ * @param $op
+ *   Either 'insert' when the account is in the process of being created,
+ *   or 'update' when username or VCS specific data change,
+ *   or 'delete' if it will be deleted after this function has been called.
  * @param $uid
  *   The Drupal user id corresponding to the VCS account.
  * @param $username
@@ -337,13 +354,40 @@ function versioncontrol_cvs_insert_commit($commit, $commit_actions) {
  * @param $cvs_specific
  *   An array of CVS specific additional author information.
  */
-function versioncontrol_cvs_insert_account($uid, $username, $repository, $cvs_specific = NULL) {
-  if (!is_array($cvs_specific) || !isset($cvs_specific['password'])) {
-    return;
+function versioncontrol_cvs_account($op, $uid, $username, $repository, $cvs_specific = NULL) {
+  switch ($op) {
+    case 'insert':
+      if (!is_array($cvs_specific) || !isset($cvs_specific['password'])) {
+        drupal_set_message(t('Error: no CVS password given on account creation!'), 'error');
+        return;
+      }
+      db_query("INSERT INTO {versioncontrol_cvs_accounts}
+                (uid, repo_id, password)
+                VALUES ('%d', '%d', '%s')",
+                $uid, $repository['repo_id'], $cvs_specific['password']);
+      break;
+
+    case 'update':
+      if (!is_array($cvs_specific) || !isset($cvs_specific['password'])) {
+        return; // the user didn't update the password in the process.
+      }
+      db_query("UPDATE {versioncontrol_cvs_accounts}
+                SET password = '%s'
+                WHERE uid = '%d' AND repo_id = '%d'",
+                $cvs_specific['password'], $uid, $repository['repo_id']);
+
+      if (!user_access('administer version control systems')) {
+        // Admins get "The account has been updated successfully" anyways.
+        drupal_set_message(t('The CVS password has been updated successfully.'));
+      }
+      break;
+
+    case 'delete':
+      db_query("DELETE FROM {versioncontrol_cvs_accounts}
+                WHERE uid = '%d' AND repo_id = '%d'",
+                $uid, $repository['repo_id']);
+      break;
   }
-  db_query("INSERT INTO {versioncontrol_cvs_accounts} (repo_id, username, password)
-            VALUES ('%d', '%s', '%s')",
-            $repository['repo_id'], $username, $cvs_specific['password']);
 }
 
 /**

@@ -18,10 +18,10 @@ function versioncontrol_cvs_install() {
     case 'mysqli':
     case 'mysql':
       db_query("CREATE TABLE {versioncontrol_cvs_accounts} (
+        uid int unsigned NOT NULL default '0',
         repo_id int unsigned NOT NULL default '0',
-        username varchar(64) NOT NULL default '',
         password varchar(64) NOT NULL default '',
-        PRIMARY KEY (repo_id, username)
+        PRIMARY KEY (uid, repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_repositories} (

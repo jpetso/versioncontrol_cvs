@@ -8,54 +8,63 @@
  * This file contains the administrative user interface customizations
  * for accounts and repositories.
  *
+ * Copyright 2006, 2007 Derek Wright ("dww" , http://drupal.org/user/46549)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 
-/**
- * Return a user visible text that contains one or more examples for
- * how the repository root should look like. This string will show up in the
- * Add/Edit FakeVCS repository of the repository administration pages.
- */
-function versioncontrol_cvs_get_repository_root_example() {
-  return t('Examples: /path or :pserver:user:password@server:/path.');
-}
+define('VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH', 5);
 
 /**
- * Implementation of hook_form_alter():
- * Add CVS specific elements to the repository adding/editing form.
+ * Implementation of hook_form_alter(): Add elements to various
+ * administrative forms that the Version Control API provides.
  */
 function versioncontrol_cvs_form_alter($form_id, &$form) {
-  if ($form['#id'] == 'repository-form' && $form['#vcs'] == 'cvs') {
-    $repository = $form['#repository'];
-
-    $form['repository_information']['updated'] = array(
-      '#type' => 'value',
-      '#value' => isset($repository) ? $repository['cvs_specific']['updated'] : 0,
-    );
-    $form['repository_information']['modules'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Modules'),
-      '#description' => t('Separate multiple CVS modules with spaces.'),
-      '#default_value' => isset($repository) ? implode(' ', $repository['cvs_specific']['modules']) : '',
-      '#weight' => 7,
-      '#size' => 40,
-      '#maxlength' => 255,
-    );
-    $form['repository_information']['update_method'] = array(
-      '#type' => 'radios',
-      '#title' => t('Update method'),
-      '#description' => t('Automatic log retrieval requires cron.'),
-      '#default_value' => isset($repository)
-                          ? $repository['cvs_specific']['update_method']
-                          : VERSIONCONTROL_CVS_UPDATE_XCVS,
-      '#weight' => 10,
-      '#options' => array(
-        // log retrieval is not yet ported from cvs.module
-        // VERSIONCONTROL_CVS_UPDATE_CRON => t('Automatic log retrieval.'),
-        VERSIONCONTROL_CVS_UPDATE_XCVS => t('Use external script to insert data.'),
-      ),
-    );
+  if ($form['#id'] == 'vcs-repository-form' && $form['#vcs'] == 'cvs') {
+    versioncontrol_cvs_repository_admin_form_alter($form_id, $form);
   }
+  else if ($form['#id'] == 'vcs-account-form' && $form['#vcs'] == 'cvs') {
+    versioncontrol_cvs_account_form_alter($form_id, $form);
+  }
+}
+
+
+/**
+ * Add CVS specific elements to the add/edit repository form.
+ */
+function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
+  $repository = $form['#repository'];
+
+  $form['repository_information']['root']['#description'] = t(
+    'The CVSROOT of this repository. Examples: /path or :pserver:user:password@server:/path.'
+  );
+
+  $form['repository_information']['updated'] = array(
+    '#type' => 'value',
+    '#value' => isset($repository) ? $repository['cvs_specific']['updated'] : 0,
+  );
+  $form['repository_information']['modules'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Modules'),
+    '#description' => t('Separate multiple CVS modules with spaces.'),
+    '#default_value' => isset($repository) ? implode(' ', $repository['cvs_specific']['modules']) : '',
+    '#weight' => 7,
+    '#size' => 40,
+    '#maxlength' => 255,
+  );
+  $form['repository_information']['update_method'] = array(
+    '#type' => 'radios',
+    '#title' => t('Update method'),
+    '#description' => t('Automatic log retrieval requires cron.'),
+    '#default_value' => isset($repository)
+                        ? $repository['cvs_specific']['update_method']
+                        : VERSIONCONTROL_CVS_UPDATE_XCVS,
+    '#weight' => 10,
+    '#options' => array(
+      // log retrieval is not yet ported from cvs.module
+      // VERSIONCONTROL_CVS_UPDATE_CRON => t('Automatic log retrieval.'),
+      VERSIONCONTROL_CVS_UPDATE_XCVS => t('Use external script to insert data.'),
+    ),
+  );
 }
 
 /**
@@ -89,7 +98,7 @@ function versioncontrol_cvs_extract_repository_vcs_specific($form_values) {
  * @param $header
  *   A list of columns that will be passed to theme('table').
  * @param $rows_by_repo_id
- *   An array of existing rows, with repository ids as array keys.
+ *   An array of existing table rows, with repository ids as array keys.
  *   Each row already includes the generic column values, and for each row
  *   there is a repository with the same repository id given in the
  *   @p $repositories parameter.
@@ -119,4 +128,43 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
                                      : t('never');
     }
   }
+}
+
+
+/**
+ * Add CVS specific elements to the edit/register user account form.
+ */
+function versioncontrol_cvs_account_form_alter($form_id, &$form) {
+  $form['account']['account_password'] = array(
+    '#type' => 'password_confirm',
+    '#title' => t('CVS password'),
+    '#description' => t('To change the current CVS password, enter the new password in both fields.'),
+  );
+  $form['#validate']['versioncontrol_cvs_account_form_validate'] = array();
+}
+
+/**
+ * Additional validation for the edit/register user account form.
+ */
+function versioncontrol_cvs_account_form_validate($form_id, $form_values) {
+  if (!empty($form_values['original_username']) && empty($form_values['account_password'])) {
+    return; // The (existing) user didn't change the password.
+  }
+  else if (strlen($form_values['account_password']) < VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH) {
+    form_set_error('account_password', t('The CVS password you have chosen is too short (it must be at least !min characters long).', array('!min' => VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH)));
+  }
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_extract_account_vcs_specific():
+ * Extract CVS specific user account additions (say: the password)
+ * from the edit/register user account form's submitted values.
+ */
+function versioncontrol_cvs_extract_account_vcs_specific($form_values) {
+  if (empty($form_values['account_password'])) {
+    return NULL;
+  }
+  return array(
+    'password' => crypt($form_values['account_password']),
+  );
 }
