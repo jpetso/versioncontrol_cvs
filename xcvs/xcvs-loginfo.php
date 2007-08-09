@@ -206,7 +206,7 @@ function xcvs_init($argc, $argv) {
         // Get the remaining info from the commit log that we get from STDIN.
         list($branch_name, $message) = xcvs_parse_log(STDIN);
 
-        $uid = versioncontrol_get_account_uid_for_username($username, $xcvs['repo_id']);
+        $uid = versioncontrol_get_account_uid_for_username($username, $xcvs['repo_id'], TRUE);
         if (!isset($uid)) {
           $uid = 0;
         }
