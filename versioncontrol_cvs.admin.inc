@@ -68,17 +68,20 @@ function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
 }
 
 /**
- * Implementation of [versioncontrol_backend]_extract_repository_vcs_specific():
+ * Implementation of hook_versioncontrol_extract_repository_data():
  * Extract CVS specific repository additions from the repository
  * editing/adding form's submitted values.
  */
-function versioncontrol_cvs_extract_repository_vcs_specific($form_values) {
+function versioncontrol_cvs_versioncontrol_extract_repository_data($form_values) {
   $modules = trim($form_values['modules']);
   $modules = empty($modules) ? array() : explode(' ', $modules);
+
   return array(
-    'modules'       => $modules,
-    'update_method' => $form_values['update_method'],
-    'updated'       => $form_values['updated'],
+    'cvs_specific' => array(
+      'modules'       => $modules,
+      'update_method' => $form_values['update_method'],
+      'updated'       => $form_values['updated'],
+    ),
   );
 }
 
@@ -159,15 +162,17 @@ function versioncontrol_cvs_account_form_validate($form_id, $form_values) {
 }
 
 /**
- * Implementation of [versioncontrol_backend]_extract_account_vcs_specific():
+ * Implementation of hook_versioncontrol_extract_account_data():
  * Extract CVS specific user account additions (say: the password)
  * from the edit/register user account form's submitted values.
  */
-function versioncontrol_cvs_extract_account_vcs_specific($form_values) {
+function versioncontrol_cvs_versioncontrol_extract_account_data($form_values) {
   if (empty($form_values['account_password'])) {
-    return NULL;
+    return array();
   }
   return array(
-    'password' => crypt($form_values['account_password']),
+    'cvs_specific' => array(
+      'password' => crypt($form_values['account_password']),
+    ),
   );
 }

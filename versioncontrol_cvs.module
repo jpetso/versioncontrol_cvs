@@ -351,13 +351,15 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
  *   The VCS specific username (a string).
  * @param $repository
  *   The repository where the user has its VCS account.
- * @param $cvs_specific
- *   An array of CVS specific additional author information.
+ * @param $additional_data
+ *   An array of additional author information.
  */
-function versioncontrol_cvs_account($op, $uid, $username, $repository, $cvs_specific = NULL) {
+function versioncontrol_cvs_account($op, $uid, $username, $repository, $additional_data = array()) {
+  $cvs_specific = $additional_data['cvs_specific'];
+
   switch ($op) {
     case 'insert':
-      if (!is_array($cvs_specific) || !isset($cvs_specific['password'])) {
+      if (!isset($cvs_specific) || !isset($cvs_specific['password'])) {
         drupal_set_message(t('Error: no CVS password given on account creation!'), 'error');
         return;
       }
@@ -368,7 +370,7 @@ function versioncontrol_cvs_account($op, $uid, $username, $repository, $cvs_spec
       break;
 
     case 'update':
-      if (!is_array($cvs_specific) || !isset($cvs_specific['password'])) {
+      if (!isset($cvs_specific) || !isset($cvs_specific['password'])) {
         return; // the user didn't update the password in the process.
       }
       db_query("UPDATE {versioncontrol_cvs_accounts}
