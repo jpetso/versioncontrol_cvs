@@ -3,7 +3,8 @@
 // $Id$
 /**
  * @file
- * Configuration variables and bootstrapping code for all CVS hook scripts.
+ * Insert commit info into the Drupal database by processing command line input
+ * and sending it to the Version Control API.
  *
  * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
@@ -26,9 +27,9 @@ function xcvs_is_last_directory($logfile, $dir) {
     $fd = fopen($logfile, "r");
     $last = fgets($fd);
     fclose($fd);
-    return $dir == $last ? 1 : 0;
+    return $dir == $last ? TRUE : FALSE;
   }
-  return 1;
+  return TRUE;
 }
 
 function xcvs_get_commit_action($file_entry) {
@@ -108,16 +109,16 @@ function xcvs_parse_log($input_stream) {
  * Bootstrap Drupal, gather commit data and pass it on to Version Control API.
  */
 function xcvs_init($argc, $argv) {
-  $original_argv = $argv;
   $this_file = array_shift($argv);   // argv[0]
-  $config_file = array_shift($argv); // argv[1]
-  $username = array_shift($argv);    // argv[2]
-  $commitdir = array_shift($argv);   // argv[3]
 
   if ($argc < 7) {
     xcvs_help($this_file, STDERR);
     exit(2);
   }
+
+  $config_file = array_shift($argv); // argv[1]
+  $username = array_shift($argv);    // argv[2]
+  $commitdir = array_shift($argv);   // argv[3]
 
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
@@ -134,6 +135,9 @@ function xcvs_init($argc, $argv) {
   }
 
   if ($xcvs['logs_combine']) {
+    // The commitinfo script wrote the lastlog file for us.
+    // Its only contents is the name of the last directory that commitinfo
+    // was invoked with, and that order is the same one as for loginfo.
     $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
     $summary = $tempdir .'/xcvs-summary.'. posix_getpgrp();
 
@@ -153,7 +157,9 @@ function xcvs_init($argc, $argv) {
     }
 
     // Once all logs in a multi-directory commit have been gathered,
-    // we get to this point with the right $commitdir. Or something like that.
+    // the currently processed directory matches the last processed directory
+    // that commitinfo was invoked with, which means we've got all the
+    // needed data in the summary file.
     if (xcvs_is_last_directory($lastlog, $commitdir)) {
       // Convert the previously written temporary log file
       // to Version Control API's commit action format.
@@ -179,6 +185,8 @@ function xcvs_init($argc, $argv) {
 
       // Integrate with the Drupal Version Control API.
       if ($xcvs['versioncontrol'] && !empty($commit_actions)) {
+        // Do a full Drupal bootstrap.
+        xcvs_bootstrap($xcvs['drupal_path']);
 
         // Find out how many lines have been added and removed for each file.
         foreach ($commit_actions as $path => $action) {

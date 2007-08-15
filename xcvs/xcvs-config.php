@@ -49,11 +49,30 @@ $xcvs['repo_id'] = 1;
 $xcvs['versioncontrol'] = TRUE;
 
 // Combine the commit log messages for a multidir commit into one mail.
-$xcvs["logs_combine"] = TRUE;
+$xcvs['logs_combine'] = TRUE;
+
+// These users are always allowed full access, even if we can't
+// connect to the DB. This optional list should contain the CVS
+// usernames (not the Drupal username if they're different).
+$xcvs['allowed_users'] = array();
 
 
 // ------------------------------------------------------------
-// Internal code
+// Access control
+// ------------------------------------------------------------
+
+// Boolean to specify if users should be allowed to delete tags (= branches).
+$xcvs['allow_tag_removal'] = TRUE;
+
+// Error message for the above permission.
+$xcvs['tag_delete_denied_message'] = <<<EOF
+** ERROR: You are not allowed to delete tags.
+
+EOF;
+
+
+// ------------------------------------------------------------
+// Shared code
 // ------------------------------------------------------------
 
 function xcvs_bootstrap($drupal_path) {
@@ -73,9 +92,6 @@ function xcvs_bootstrap($drupal_path) {
 
   chdir($current_directory);
 }
-
-// Do a full Drupal bootstrap.
-xcvs_bootstrap($xcvs['drupal_path']);
 
 // $xcvs has to be made global so the xcvs-taginfo.php script works properly.
 global $xcvs_global;
