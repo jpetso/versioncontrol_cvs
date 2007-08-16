@@ -60,12 +60,6 @@ function xcvs_get_commit_action($filename, $dir) {
   return array($repository_path, $action);
 }
 
-function xcvs_log_add($filename, $dir, $mode = "w") {
-  $fd = fopen($filename, $mode);
-  fwrite($fd, $dir);
-  fclose($fd);
-}
-
 function xcvs_init($argc, $argv) {
   $this_file = array_shift($argv);   // argv[0]
 
@@ -117,7 +111,7 @@ function xcvs_init($argc, $argv) {
 
     // Fail and print out error messages if commit access has been denied.
     if (!$access) {
-      fwrite(STDERR, implode("\n", versioncontrol_get_access_errors()) ."\n");
+      fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
       exit(6);
     }
   }

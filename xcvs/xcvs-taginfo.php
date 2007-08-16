@@ -14,13 +14,38 @@
 //       not in here, but rather in the release node integration
 
 function xcvs_help($cli, $output_stream) {
-  fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTVv}\n\n");
+  fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTv}\n\n");
+}
+
+function xcvs_log_tag($op, $tag) {
+  if ($op == 'add') {
+    if (empty($tag['items'])) [
+      return;
+    }
+    _versioncontrol_cvs_insert_tag_operation($tag);
+  }
+}
+
+function xcvs_log_branch($op, $branch) {
+  if ($op == 'add' || $op == 'move') {
+    $branch_id = _versioncontrol_cvs_get_branch_id($branch['name'], $branch['repo_id']);
+
+    if (!isset($branch_id)) {
+      $branch_id = _versioncontrol_cvs_insert_branch($branch['name'], $branch['repo_id']);
+    }
+  }
+  if ($op == 'add') {
+    _versioncontrol_cvs_insert_branch_operation($branch, $branch_id);
+  }
+  // TODO: $op == 'move'
 }
 
 function xcvs_init($argc, $argv) {
+  fwrite(STDERR, print_r($argv, TRUE));
+
   $this_file = array_shift($argv);   // argv[0]
 
-  if ($argc < 7) {
+  if ($argc < 10) {
     xcvs_help($this_file, STDERR);
     exit(2);
   }
@@ -43,9 +68,6 @@ function xcvs_init($argc, $argv) {
     // admins and other privileged users don't need to go through any checks
     exit(0);
   }
-
-  // Do a full Drupal bootstrap.
-  xcvs_bootstrap($xcvs['drupal_path']);
 
   switch ($cvs_op) {
     case 'add':
@@ -73,29 +95,59 @@ function xcvs_init($argc, $argv) {
       exit(5);
   }
 
+  // Do a full Drupal bootstrap.
+  xcvs_bootstrap($xcvs['drupal_path']);
+
+  // Gather info for each tagged/branched file.
+  $items = array();
+  while (!empty($argv)) {
+    $filename = array_shift($argv);
+    $source_branch = array_shift($argv);
+    $old_revision = array_shift($argv);
+    $new_revision = array_shift($argv);
+
+    $item = array(
+      'type' => VERSIONCONTROL_ITEM_FILE,
+      'path' => '/'. $dir .'/'. $filename,
+      'revision' => ($new_revision != 'NONE') ? $new_revision : $old_revision,
+    );
+    if ($op != 'delete') {
+      $item['source branch'] = empty($source_branch) ? 'HEAD' : $source_branch;
+    }
+
+    $items[$item['path']] = $item;
+  }
+
+  if (empty($items)) {
+    exit(0); // if nothing is being tagged, we don't need to control access.
+  }
+
   $tag_or_branch = array(
     'name' => $tag,
     'username' => $username,
     'repo_id' => $xcvs['repo_id'],
-    'directory' => $dir,
   );
 
-  // TODO: note all affected items in the 'items' array element.
-
   if ($type == 'N') { // is a tag
-    $access = versioncontrol_has_tag_access($op, $tag_or_branch);
+    $access = versioncontrol_has_tag_access($op, $tag_or_branch, $items);
   }
-  else if ($type == 'B') { // is a branch
-    $access = versioncontrol_has_branch_access($op, $tag_or_branch);
+  else if ($type == 'T') { // is a branch
+    $access = versioncontrol_has_branch_access($op, $tag_or_branch, $items);
   }
 
   // Fail and print out error messages if branch/tag access has been denied.
   if (!$access) {
-    fwrite(STDERR, implode("\n", versioncontrol_get_access_errors()) ."\n");
+    fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
     exit(6);
   }
+  // If we get as far as this, the tagging/branching operation may happen.
 
-  // TODO: log tags.
+  // Remember this directory so that loginfo can combine tags/branches
+  // from different directories in one tag/branch entry.
+  if ($xcvs["logs_combine"]) {
+    $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
+    xcvs_log_add($lastlog, $dir);
+  }
 
   exit(0);
 }

@@ -43,19 +43,50 @@ function versioncontrol_cvs_install() {
         repo_id int unsigned NOT NULL default '0',
         name varchar(255) NOT NULL default '',
         PRIMARY KEY (branch_id),
-        UNIQUE KEY (name)
+        UNIQUE KEY (repo_id, name)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_branch_operations} (
+        branch_op_id int unsigned NOT NULL default '0',
+        branch_id int unsigned NOT NULL default '0',
+        date bigint NOT NULL default '0',
+        PRIMARY KEY (branch_op_id),
+        KEY (branch_id)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_tag_operations} (
+        tag_op_id int unsigned NOT NULL default '0',
+        repo_id int unsigned NOT NULL default '0',
+        name varchar(255) NOT NULL default '',
+        date bigint NOT NULL default '0',
+        PRIMARY KEY (tag_op_id),
+        KEY (repo_id, name)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
+        item_revision_id int unsigned NOT NULL default '0',
         commit_id int unsigned NOT NULL default '0',
         type tinyint NOT NULL default '0',
         path varchar(255) NOT NULL default '',
-        revision varchar(255) default '',
+        revision varchar(255) NOT NULL default '',
         action tinyint unsigned NOT NULL default '0',
         lines_added smallint unsigned NOT NULL default '0',
         lines_removed smallint unsigned NOT NULL default '0',
         source_revision varchar(255) NOT NULL default '',
-        PRIMARY KEY (commit_id, path)
+        PRIMARY KEY (item_revision_id),
+        UNIQUE KEY (commit_id, path)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
+        tag_op_id int unsigned NOT NULL default '0',
+        item_revision_id int unsigned NOT NULL default '0',
+        PRIMARY KEY (tag_op_id, item_revision_id)
+      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
+        branch_op_id int unsigned NOT NULL default '0',
+        item_revision_id int unsigned NOT NULL default '0',
+        PRIMARY KEY (branch_op_id, item_revision_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       break;
@@ -70,29 +101,60 @@ function versioncontrol_cvs_install() {
  * Implementation of hook_uninstall().
  */
 function versioncontrol_cvs_uninstall() {
+  // Make sure we can access the Version Control API functions.
+  if (function_exists('versioncontrol_delete_repository')) {
+    $repositories = versioncontrol_get_repositories(array('vcs' => array('cvs')));
+    foreach ($repositories as $repository) {
+      versioncontrol_delete_repository($repository);
+    }
+  }
+  else {
+    // We need to delete all commits for CVS repositories,
+    // but I don't think it's possible to join tables in DELETE statements,
+    // so fetch the repository ids separately.
+    $result = db_query("SELECT repo_id FROM {versioncontrol_repositories}
+                        WHERE vcs = 'cvs'");
+    $repo_ids = array();
+    $repo_id_constraints = array();
+    while ($repository = db_fetch_object($result)) {
+      $repo_id_constraints[] = "repo_id = '%d'";
+      $repo_ids[] = $repository->repo_id;
+    }
+
+    if (!empty($repo_ids)) {
+      // Repository ids are not given for branch operations, so we need to
+      // retrieve the branch ids in order to delete the branch ops.
+      $result = db_query("SELECT branch_id FROM {versioncontrol_cvs_branches}
+                          WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
+      $branch_ids = array();
+      $branch_id_constraints = array();
+      while ($branch = db_fetch_object($result)) {
+        $branch_id_constraints[] = "branch_id = '%d'";
+        $branch_ids[] = $branch->branch_id;
+      }
+      if (!empty($branch_ids)) [
+        db_query("DELETE FROM {versioncontrol_cvs_branch_operations}
+                  WHERE ". implode(' OR ', $branch_id_constraints), $branch_ids);
+      }
+      // The other ones can be deleted by specifying the repository ids.
+      db_query("DELETE FROM {versioncontrol_cvs_branches}
+                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
+      db_query("DELETE FROM {versioncontrol_commits}
+                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
+      db_query("DELETE FROM {versioncontrol_accounts}
+                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
+    }
+
+    db_query("DELETE FROM {versioncontrol_repositories} WHERE vcs = 'cvs'");
+  }
+
   db_query("DROP TABLE {versioncontrol_cvs_accounts}");
   db_query("DROP TABLE {versioncontrol_cvs_repositories}");
   db_query("DROP TABLE {versioncontrol_cvs_commits}");
   db_query("DROP TABLE {versioncontrol_cvs_branches}");
+  db_query("DROP TABLE {versioncontrol_cvs_branch_operations}");
+  db_query("DROP TABLE {versioncontrol_cvs_tag_operations}");
   db_query("DROP TABLE {versioncontrol_cvs_item_revisions}");
-
-  // We need to delete all commits for CVS repositories,
-  // but I'm not sure if it's possible to join in DELETE statements,
-  // so fetch the commit ids separately.
-  $result = db_query("SELECT c.commit_id
-                      FROM {versioncontrol_commits} c
-                       INNER JOIN {versioncontrol_repositories} r ON c.repo_id = r.repo_id
-                      WHERE r.vcs = 'cvs'");
-  $commit_ids = array();
-  $commid_id_constraints = array();
-  while ($commit = db_fetch_object($result)) {
-    $commid_id_constraints[] = "commit_id = '%d'";
-    $commit_ids[] = $commit->commit_id;
-  }
-  if (!empty($commit_ids)) {
-    db_query('DELETE FROM {versioncontrol_commits}
-              WHERE '. implode(' OR ', $commit_id_constraints), $commit_ids);
-  }
-
-  db_query("DELETE FROM {versioncontrol_repositories} WHERE vcs = 'cvs'");
+  db_query("DROP TABLE {versioncontrol_cvs_item_tags}");
+  db_query("DROP TABLE {versioncontrol_cvs_item_branch_points}");
 }

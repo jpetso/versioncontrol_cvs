@@ -44,10 +44,6 @@ $xcvs['repo_id'] = 1;
 // Optional customization
 // ------------------------------------------------------------
 
-// Should these scripts update the Drupal database with commit logs
-// and information to provide Version Control API integration?
-$xcvs['versioncontrol'] = TRUE;
-
 // Combine the commit log messages for a multidir commit into one mail.
 $xcvs['logs_combine'] = TRUE;
 
@@ -91,6 +87,22 @@ function xcvs_bootstrap($drupal_path) {
   drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
 
   chdir($current_directory);
+}
+
+function xcvs_log_add($filename, $dir, $mode = 'w') {
+  $fd = fopen($filename, $mode);
+  fwrite($fd, $dir);
+  fclose($fd);
+}
+
+function xcvs_is_last_directory($logfile, $dir) {
+  if (file_exists($logfile)) {
+    $fd = fopen($logfile, "r");
+    $last = fgets($fd);
+    fclose($fd);
+    return $dir == $last ? TRUE : FALSE;
+  }
+  return TRUE;
 }
 
 // $xcvs has to be made global so the xcvs-taginfo.php script works properly.

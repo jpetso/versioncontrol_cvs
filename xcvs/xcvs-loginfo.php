@@ -16,20 +16,10 @@ function xcvs_help($cli, $output_stream) {
   fwrite($output_stream, "Usage: $cli <config file> \$USER %p %{sVv}\n\n");
 }
 
-function xcvs_log_add($filename, $dir, $mode = 'w') {
-  $fd = fopen($filename, $mode);
-  fwrite($fd, $dir);
-  fclose($fd);
-}
-
-function xcvs_is_last_directory($logfile, $dir) {
-  if (file_exists($logfile)) {
-    $fd = fopen($logfile, "r");
-    $last = fgets($fd);
-    fclose($fd);
-    return $dir == $last ? TRUE : FALSE;
-  }
-  return TRUE;
+function xcvs_exit($status, $lastlog, $summary) {
+  @unlink($lastlog);
+  @unlink($summary);
+  exit($status);
 }
 
 function xcvs_get_commit_action($file_entry) {
@@ -166,7 +156,7 @@ function xcvs_init($argc, $argv) {
       $fd = fopen($summary, "r");
       if ($fd === FALSE) {
         fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
-        exit(5);
+        xcvs_exit(5, $lastlog, $summary);
       }
       $commit_actions = array();
 
@@ -184,7 +174,7 @@ function xcvs_init($argc, $argv) {
       //       versioncontrol_commit($op = 'insert') hook.
 
       // Integrate with the Drupal Version Control API.
-      if ($xcvs['versioncontrol'] && !empty($commit_actions)) {
+      if (!empty($commit_actions)) {
         // Do a full Drupal bootstrap.
         xcvs_bootstrap($xcvs['drupal_path']);
 
@@ -221,18 +211,9 @@ function xcvs_init($argc, $argv) {
 
         // Get the branch id, and insert the branch into the database
         // if it doesn't exist yet.
-        $branches_by_repository = _versioncontrol_cvs_get_branches(array(
-          'repo_ids' => array($xcvs['repo_id']),
-          'names' => array($branch_name),
-        ));
-        foreach ($branches_by_repository as $repo_id => $branches) {
-          // we asked for one branch in one repository, so there's only one result
-          foreach ($branches as $id => $name) {
-            $branch_id = $id;
-          }
-        }
+        $branch_id = _versioncontrol_cvs_get_branch_id($branch_name, $xcvs['repo_id']);
         if (!isset($branch_id)) {
-          $branch_id = _versioncontrol_cvs_insert_branch($branch_name);
+          $branch_id = _versioncontrol_cvs_insert_branch($branch_name, $xcvs['repo_id']);
         }
 
         // Prepare the data for passing it to Version Control API.
@@ -254,8 +235,7 @@ function xcvs_init($argc, $argv) {
     }
 
     // Clean up
-    @unlink($lastlog);
-    @unlink($summary);
+    xcvs_exit(0, $lastlog, $summary);
   }
   exit(0);
 }
