@@ -23,45 +23,17 @@ function xcvs_exit($status, $lastlog, $summary) {
   exit($status);
 }
 
-function xcvs_get_item($op, $file_entry) {
+function xcvs_get_item($action, $file_entry) {
   if ($file_entry) {
     list($path, $source_branch, $old, $new) = explode(",", $file_entry);
 
-    $item = array(
+    return array(
       'type' => VERSIONCONTROL_ITEM_FILE,
       'path' => $path,
       'revision' => ($new != 'NONE') ? $new : $old,
+      'source branch' => ($action == VERSIONCONTROL_ACTION_DELETED) ? NULL : $source_branch,
     );
-    if ($op != 'delete') {
-      $item['source branch'] = $source_branch;
-    }
-
-    return array($path, $item);
   }
-}
-
-function xcvs_log_tag($op, $tag, $tagged_items) {
-  if ($op == 'add') {
-    if (empty($tagged_items)) [
-      return;
-    }
-    _versioncontrol_cvs_insert_tag_operation($tag, $tagged_items);
-  }
-  // TODO: $op == 'move' and $op == 'delete'
-}
-
-function xcvs_log_branch($op, $branch, $branched_items) {
-  if ($op == 'add' || $op == 'move') {
-    $branch['branch_id'] = _versioncontrol_cvs_get_branch_id($branch['name'], $branch['repo_id']);
-
-    if (!isset($branch['branch_id'])) {
-      $branch['branch_id'] = _versioncontrol_cvs_insert_branch($branch['name'], $branch['repo_id']);
-    }
-  }
-  if ($op == 'add') {
-    _versioncontrol_cvs_insert_branch_operation($branch, $branched_items);
-  }
-  // TODO: $op == 'move' and $op == 'delete'
 }
 
 function xcvs_init($argc, $argv) {
@@ -116,11 +88,11 @@ function xcvs_init($argc, $argv) {
     if (xcvs_is_last_directory($lastlog, $commitdir)) {
       switch ($cvs_op) {
         case 'add':
-          $op = 'add';
+          $action = VERSIONCONTROL_ACTION_ADDED;
           break;
 
         case 'mov':
-          $op = 'move';
+          $action = VERSIONCONTROL_ACTION_MOVED;
           break;
 
         case 'del':
@@ -128,7 +100,7 @@ function xcvs_init($argc, $argv) {
           // so let go without asking the Version Control API
           // TODO: I think we can work around this by logging all branches and tags
           //       for each item in the database, and afterwards looking them up.
-          $op = 'delete';
+          $action = VERSIONCONTROL_ACTION_DELETED;
           xcvs_exit(0, $lastlog, $summary);
 
         default:
@@ -147,9 +119,9 @@ function xcvs_init($argc, $argv) {
 
       while (!feof($fd)) {
         $file_entry = trim(fgets($fd));
-        list($path, $item) = xcvs_get_item($op, $file_entry);
-        if ($path) {
-          $items[$path] = $item;
+        $item = xcvs_get_item($action, $file_entry);
+        if ($item) {
+          $items[] = $item;
         }
       }
       fclose($fd);
@@ -161,15 +133,18 @@ function xcvs_init($argc, $argv) {
 
       $tag_or_branch = array(
         'name' => $tag,
+        'action' => $action,
+        'date' => time(),
         'username' => $username,
         'repo_id' => $xcvs['repo_id'],
+        'cvs_specific' => array(),
       );
 
       if ($type == 'N') { // is a tag
-        xcvs_log_tag($op, $tag_or_branch, $items);
+        versioncontrol_insert_tag_operation($tag_or_branch, $items);
       }
       else if ($type == 'T') { // is a branch
-        xcvs_log_branch($op, $tag_or_branch, $items);
+        versioncontrol_insert_branch_operation($tag_or_branch, $items);
       }
     }
 

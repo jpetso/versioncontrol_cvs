@@ -211,10 +211,7 @@ function xcvs_init($argc, $argv) {
 
         // Get the branch id, and insert the branch into the database
         // if it doesn't exist yet.
-        $branch_id = _versioncontrol_cvs_get_branch_id($branch_name, $xcvs['repo_id']);
-        if (!isset($branch_id)) {
-          $branch_id = _versioncontrol_cvs_insert_branch($branch_name, $xcvs['repo_id']);
-        }
+        $branch_id = versioncontrol_ensure_branch($branch_name, $xcvs['repo_id']);
 
         // Prepare the data for passing it to Version Control API.
         $commit = array(

@@ -38,31 +38,6 @@ function versioncontrol_cvs_install() {
         PRIMARY KEY (commit_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
-      db_query("CREATE TABLE {versioncontrol_cvs_branches} (
-        branch_id int unsigned NOT NULL default '0',
-        repo_id int unsigned NOT NULL default '0',
-        name varchar(255) NOT NULL default '',
-        PRIMARY KEY (branch_id),
-        UNIQUE KEY (repo_id, name)
-      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_branch_operations} (
-        branch_op_id int unsigned NOT NULL default '0',
-        branch_id int unsigned NOT NULL default '0',
-        date bigint NOT NULL default '0',
-        PRIMARY KEY (branch_op_id),
-        KEY (branch_id)
-      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_tag_operations} (
-        tag_op_id int unsigned NOT NULL default '0',
-        repo_id int unsigned NOT NULL default '0',
-        name varchar(255) NOT NULL default '',
-        date bigint NOT NULL default '0',
-        PRIMARY KEY (tag_op_id),
-        KEY (repo_id, name)
-      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
         item_revision_id int unsigned NOT NULL default '0',
         commit_id int unsigned NOT NULL default '0',

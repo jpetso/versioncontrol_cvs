@@ -210,7 +210,7 @@ function versioncontrol_cvs_get_commit_branches($commit) {
     return array();
   }
 
-  $branch = _versioncontrol_cvs_get_branch($commit['cvs_specific']['branch_id']);
+  $branch = versioncontrol_get_branch($commit['cvs_specific']['branch_id']);
   if (!isset($branch)) {
     return array(); // should only happen in case of database inconsistencies
   }
@@ -240,7 +240,7 @@ function versioncontrol_cvs_get_current_item_branch($repository, $item) {
     return NULL;
   }
 
-  $branch = _versioncontrol_cvs_get_branch($item['cvs_specific']['selected branch']);
+  $branch = versioncontrol_get_branch($item['cvs_specific']['selected branch']);
   if (!isset($branch)) {
     return NULL;
   }
@@ -266,7 +266,7 @@ function versioncontrol_cvs_get_current_item_tag($repository, $item) {
     return NULL;
   }
 
-  $tag = _versioncontrol_cvs_get_tag_operation($item['cvs_specific']['selected tag']);
+  $tag = versioncontrol_get_tag_operation($item['cvs_specific']['selected tag']);
   if (!isset($tag)) {
     return NULL;
   }
@@ -328,9 +328,92 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
         db_query("DELETE FROM {versioncontrol_cvs_item_tags}
                   WHERE item_revision_id = '%d'",
                   $revision->item_revision_id);
+        db_query("DELETE FROM {versioncontrol_cvs_item_branch_points}
+                  WHERE item_revision_id = '%d'",
+                  $revision->item_revision_id);
       }
       db_query("DELETE FROM {versioncontrol_cvs_item_revisions}
                 WHERE commit_id = '%d'", $commit['commit_id']);
+      break;
+  }
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_branch_operation():
+ * Manage (insert or delete) additional branch operation data in the database.
+ *
+ * @param $op
+ *   Either 'insert' when the branch operation is in the process of being created,
+ *   or 'delete' if it will be deleted after this function has been called.
+ * @param $branch
+ *   A single branch operation array, like the one returned
+ *   by versioncontrol_get_branch_operation().
+ * @param $branched_items
+ *   An array of all items that are affected by the branching operation.
+ *   Compared to standard item arrays, the ones in here don't need
+ *   the 'revision' element to be set (however, the CVS backend always
+ *   provides those) and can optionally contain a 'source branch' element
+ *   that specifies the original branch of this item.
+ *   (For $op == 'delete', 'source branch' is never set.)
+ */
+function versioncontrol_cvs_branch_operation($op, $branch, $branched_items) {
+  _versioncontrol_cvs_branch_or_tag_operation(
+    $op, $tag, $tagged_items, 'item_branch_points', 'branch_op_id'
+  );
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_tag_operation():
+ * Manage (insert or delete) additional tag operation data in the database.
+ *
+ * @param $op
+ *   Either 'insert' when the tag operation is in the process of being created,
+ *   or 'delete' if it will be deleted after this function has been called.
+ * @param $tag
+ *   A single tag operation array, like the one returned
+ *   by versioncontrol_get_tag_operation().
+ * @param $tagged_items
+ *   An array of all items that are affected by the tagging operation.
+ *   Compared to standard item arrays, the ones in here don't need
+ *   the 'revision' element to be set (however, the CVS backend always
+ *   provides those) and can optionally contain a 'source branch' element
+ *   that specifies the original branch of this item.
+ *   (For $op == 'move' or $op == 'delete', 'source branch' is never set.)
+ */
+function versioncontrol_cvs_tag_operation($op, $tag, $tagged_items) {
+  _versioncontrol_cvs_branch_or_tag_operation(
+    $op, $tag, $tagged_items, 'item_tags', 'tag_op_id'
+  );
+}
+
+/**
+ * The implementation of the branch and tag operation hooks is essentially
+ * the same (just different table and primary key names),
+ * so let's share the code in this function.
+ */
+function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items, $table_name, $primary_key_name) {
+  switch ($op) {
+    case 'insert':
+      foreach ($items as $item) {
+        $result = db_query("SELECT item_revision_id
+                            FROM {versioncontrol_cvs_item_revisions}
+                            WHERE path = '%s' AND revision = '%s'",
+                            $item['path'], $item['revision']);
+
+        while ($revision = db_fetch_object($result)) {
+          db_query("INSERT INTO {versioncontrol_cvs_'. $table_name .'}
+                    ('. $primary_key_name .', item_revision_id)
+                    VALUES ('%d', '%d')",
+                    $branch_or_tag[$primary_key_name],
+                    $revision->item_revision_id);
+        }
+      }
+      break;
+
+    case 'delete':
+      db_query("DELETE FROM {versioncontrol_cvs_'. $table_name .'}
+                WHERE '. $primary_key_name .' = '%d'",
+                $branch_or_tag[$primary_key_name]);
       break;
   }
 }
@@ -389,219 +472,4 @@ function versioncontrol_cvs_account($op, $uid, $username, $repository, $addition
                 $uid, $repository['repo_id']);
       break;
   }
-}
-
-/**
- * Implementation of [versioncontrol_backend]_repository():
- * Manage (insert, update or delete) additional CVS repository data
- * in the database.
- *
- * @param $op
- *   Either 'insert' when the repository has just been created, or 'update'
- *   when repository name, root, URL backend or module specific data change,
- *   or 'delete' if it will be deleted after this function has been called.
- *
- * @param $repository
- *   The repository array containing the repository. It's a single
- *   repository array like the one returned by versioncontrol_get_repository(),
- *   so it consists of the following elements:
- *
- *   'repo_id': The unique repository id.
- *   'name': The user-visible name of the repository.
- *   'vcs': The unique string identifier of the version control system
- *          that powers this repository.
- *   'root': The root directory of the repository. In most cases,
- *           this will be a local directory (e.g. '/var/repos/drupal'),
- *           but it may also be some specialized string for remote repository
- *           access. How this string may look like depends on the backend.
- *   'url_backend': The prefix (excluding the trailing underscore)
- *                  for URL backend retrieval functions.
- *   '[xxx]_specific': An array of VCS specific additional repository
- *                     information. How this array looks like is defined by the
- *                     corresponding backend module (versioncontrol_[xxx]).
- */
-function versioncontrol_cvs_repository($op, $repository) {
-  if ($op == 'delete') {
-    // Repository ids are not given for branch operations, so we need to
-    // retrieve the branch ids in order to delete the branch ops.
-    $result = db_query("SELECT branch_id FROM {versioncontrol_cvs_branches}
-                        WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
-    $branch_ids = array();
-    $branch_id_constraints = array();
-    while ($branch = db_fetch_object($result)) {
-      $branch_id_constraints[] = "branch_id = '%d'";
-      $branch_ids[] = $branch->branch_id;
-    }
-    if (!empty($branch_ids)) {
-      db_query("DELETE FROM {versioncontrol_cvs_branch_operations}
-                WHERE ". implode(' OR ', $branch_id_constraints), $branch_ids);
-    }
-    // The other ones can be deleted by specifying the repository id.
-    db_query("DELETE FROM {versioncontrol_cvs_branches}
-              WHERE repo_id = '%d'", $repository['repo_id']);
-    db_query("DELETE FROM {versioncontrol_cvs_tag_operations}
-              WHERE repo_id = '%d'", $repository['repo_id']);
-  }
-}
-
-/**
- * Insert a branch into the {versioncontrol_cvs_branches} table.
- * No checking is done whether the branch already exists or not.
- *
- * @return
- *   The branch id of the newly inserted branch entry.
- */
-function _versioncontrol_cvs_insert_branch($branch_name, $repo_id) {
-  $branch_id = db_next_id('{versioncontrol_cvs_branches}_branch_id');
-  db_query("INSERT INTO {versioncontrol_cvs_branches} (branch_id, repo_id, name)
-            VALUES ('%d', '%d', '%s')", $branch_id, $repo_id, $name);
-  return $branch_id;
-}
-
-/**
- * Insert branched items into the database.
- */
-function _versioncontrol_cvs_insert_branch_operation($branch, $branched_items) {
-  if (empty($branch['items'])) {
-    return;
-  }
-  $branch_op_id = db_next_id('{versioncontrol_cvs_branch_operations}_branch_op_id');
-  db_query("INSERT INTO {versioncontrol_cvs_branch_operations}
-            (branch_op_id, branch_id, date)
-            VALUES ('%d', '%d', '%d')",
-            $branch_op_id, $branch['branch_id'], time());
-
-  foreach ($branched_items as $item) {
-    $result = db_query("SELECT item_revision_id
-                        FROM {versioncontrol_cvs_item_revisions}
-                        WHERE path = '%s' AND revision = '%s'",
-                        $item['path'], $item['revision']);
-
-    while ($revision = db_fetch_object($result)) {
-      db_query("INSERT INTO {versioncontrol_cvs_item_branch_points}
-                (branch_op_id, item_revision_id)
-                VALUES ('%d', '%d')",
-                $branch_op_id, $revision->item_revision_id);
-    }
-  }
-}
-
-/**
- * Retrieve the branch name and repository for a given branch id.
- *
- * @return
- *   A structured array consisting of the 'branch_id, 'repo_id' and 'name'
- *   elements, or NULL if there is no branch for this branch id.
- */
-function _versioncontrol_cvs_get_branch($branch_id) {
-  static $branch_cache = array();
-
-  if (isset($branch_cache[$branch_id])) {
-    if ($branch_cache[$branch_id] === FALSE) {
-      return NULL; // there's no branch for this id
-    }
-    return $branch_cache[$branch_id]; // return the cached branch array
-  }
-
-  $result = db_query("SELECT branch_id, repo_id, name
-                      FROM {versioncontrol_cvs_branches}
-                      WHERE branch_id = '%d'", $branch_id);
-
-  while ($branch = db_fetch_array($result)) {
-    $branch_cache[$branch_id] = $branch;
-    return $branch;
-  }
-  $branch_cache[$branch_id] = FALSE;
-  return NULL;
-}
-
-/**
- * Retrieve the branch id for a given branch name from a specific repository.
- *
- * @return
- *   The branch id of the requested branch, or NULL if there is no branch
- *   for this name and repository.
- */
-function _versioncontrol_cvs_get_branch_id($branch_name, $repo_id) {
-  static $branch_cache = array();
-
-  if (isset($branch_cache[$repo_id][$branch_name])) {
-    if ($branch_cache[$repo_id][$branch_name] === FALSE) {
-      return NULL; // there's no branch for this name and repository
-    }
-    return $branch_cache[$repo_id][$branch_name]; // return the cached branch id
-  }
-
-  $result = db_query("SELECT branch_id
-                      FROM {versioncontrol_cvs_branches}
-                      WHERE repo_id = '%d' AND name = '%s'",
-                      $repo_id, $branch_name);
-
-  while ($branch = db_fetch_object($result)) {
-    $branch_cache[$repo_id][$branch_name] = $branch->branch_id;
-    return $branch->branch_id;
-  }
-  $branch_cache[$repo_id][$branch_name] = FALSE;
-  return NULL;
-}
-
-
-/**
- * Insert a tag operation into the database.
- *
- * @return
- *   The tag id of the newly inserted tag entry.
- */
-function _versioncontrol_cvs_insert_tag_operation($tag, $tagged_items) {
-  if (empty($tagged_items)) {
-    return;
-  }
-  $tag_op_id = db_next_id('{versioncontrol_cvs_tag_operations}_tag_op_id');
-  db_query("INSERT INTO {versioncontrol_cvs_tag_operations}
-            (tag_op_id, repo_id, name, date)
-            VALUES ('%d', '%d', '%s', '%d')",
-            $tag_op_id, $tag['repo_id'], $tag['name'], time());
-
-  foreach ($tagged_items as $item) {
-    $result = db_query("SELECT item_revision_id
-                        FROM {versioncontrol_cvs_item_revisions}
-                        WHERE path = '%s' AND revision = '%s'",
-                        $item['path'], $item['revision']);
-
-    while ($revision = db_fetch_object($result)) {
-      db_query("INSERT INTO {versioncontrol_cvs_item_tags}
-                (tag_op_id, item_revision_id)
-                VALUES ('%d', '%d')",
-                $tag_op_id, $revision->item_revision_id);
-    }
-  }
-}
-
-/**
- * Retrieve the tag name, repository and timespamp for a given tag op id.
- *
- * @return
- *   A structured array consisting of the 'tag_id, 'repo_id', 'name' and 'date'
- *   elements, or NULL if there is no tag for this tag op id.
- */
-function _versioncontrol_cvs_get_tag_operation($tag_op_id) {
-  static $tag_cache = array();
-
-  if (isset($tag_cache[$tag_op_id])) {
-    if ($tag_cache[$tag_op_id] === FALSE) {
-      return NULL; // there's no tag operation for this id
-    }
-    return $tag_cache[$tag_op_id]; // return the cached tag operation array
-  }
-
-  $result = db_query("SELECT tag_op_id, repo_id, name, date
-                      FROM {versioncontrol_cvs_tag_operations}
-                      WHERE tag_op_id = '%d'", $tag_op_id);
-
-  while ($tag_operation = db_fetch_array($result)) {
-    $tag_cache[$tag_op_id] = $tag_operation;
-    return $tag_operation;
-  }
-  $tag_cache[$tag_op_id] = FALSE;
-  return NULL;
 }

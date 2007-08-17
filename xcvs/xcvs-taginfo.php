@@ -17,29 +17,6 @@ function xcvs_help($cli, $output_stream) {
   fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTv}\n\n");
 }
 
-function xcvs_log_tag($op, $tag) {
-  if ($op == 'add') {
-    if (empty($tag['items'])) [
-      return;
-    }
-    _versioncontrol_cvs_insert_tag_operation($tag);
-  }
-}
-
-function xcvs_log_branch($op, $branch) {
-  if ($op == 'add' || $op == 'move') {
-    $branch_id = _versioncontrol_cvs_get_branch_id($branch['name'], $branch['repo_id']);
-
-    if (!isset($branch_id)) {
-      $branch_id = _versioncontrol_cvs_insert_branch($branch['name'], $branch['repo_id']);
-    }
-  }
-  if ($op == 'add') {
-    _versioncontrol_cvs_insert_branch_operation($branch, $branch_id);
-  }
-  // TODO: $op == 'move'
-}
-
 function xcvs_init($argc, $argv) {
   fwrite(STDERR, print_r($argv, TRUE));
 
@@ -71,11 +48,11 @@ function xcvs_init($argc, $argv) {
 
   switch ($cvs_op) {
     case 'add':
-      $op = 'add';
+      $action = VERSIONCONTROL_ACTION_ADDED;
       break;
 
     case 'mov':
-      $op = 'move';
+      $action = VERSIONCONTROL_ACTION_MOVED;
       break;
 
     case 'del':
@@ -87,7 +64,7 @@ function xcvs_init($argc, $argv) {
       // so let go without asking the Version Control API
       // TODO: I think we can work around this by logging all branches and tags
       //       for each item in the database, and afterwards looking them up.
-      $op = 'delete';
+      $action = VERSIONCONTROL_ACTION_DELETED;
       exit(0);
 
     default:
@@ -111,11 +88,11 @@ function xcvs_init($argc, $argv) {
       'path' => '/'. $dir .'/'. $filename,
       'revision' => ($new_revision != 'NONE') ? $new_revision : $old_revision,
     );
-    if ($op != 'delete') {
+    if ($action != VERSIONCONTROL_ACTION_DELETED) {
       $item['source branch'] = empty($source_branch) ? 'HEAD' : $source_branch;
     }
 
-    $items[$item['path']] = $item;
+    $items[] = $item;
   }
 
   if (empty($items)) {
@@ -123,16 +100,19 @@ function xcvs_init($argc, $argv) {
   }
 
   $tag_or_branch = array(
-    'name' => $tag,
+    'action' => $action,
     'username' => $username,
     'repo_id' => $xcvs['repo_id'],
+    'cvs_specific' => array(),
   );
 
   if ($type == 'N') { // is a tag
-    $access = versioncontrol_has_tag_access($op, $tag_or_branch, $items);
+    $tag_or_branch['tag_name'] = $tag;
+    $access = versioncontrol_has_tag_access($tag_or_branch, $items);
   }
   else if ($type == 'T') { // is a branch
-    $access = versioncontrol_has_branch_access($op, $tag_or_branch, $items);
+    $tag_or_branch['branch_name'] = $tag;
+    $access = versioncontrol_has_branch_access($tag_or_branch, $items);
   }
 
   // Fail and print out error messages if branch/tag access has been denied.
