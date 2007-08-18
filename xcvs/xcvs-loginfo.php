@@ -160,6 +160,10 @@ function xcvs_init($argc, $argv) {
       }
       $commit_actions = array();
 
+      // Do a full Drupal bootstrap. We need it from now on at the latest,
+      // starting with the action constants in xcvs_get_commit_action().
+      xcvs_bootstrap($xcvs['drupal_path']);
+
       while (!feof($fd)) {
         $file_entry = trim(fgets($fd));
         list($path, $action) = xcvs_get_commit_action($file_entry);
@@ -175,8 +179,6 @@ function xcvs_init($argc, $argv) {
 
       // Integrate with the Drupal Version Control API.
       if (!empty($commit_actions)) {
-        // Do a full Drupal bootstrap.
-        xcvs_bootstrap($xcvs['drupal_path']);
 
         // Find out how many lines have been added and removed for each file.
         foreach ($commit_actions as $path => $action) {

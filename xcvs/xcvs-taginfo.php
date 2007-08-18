@@ -46,6 +46,9 @@ function xcvs_init($argc, $argv) {
     exit(0);
   }
 
+  // Do a full Drupal bootstrap.
+  xcvs_bootstrap($xcvs['drupal_path']);
+
   switch ($cvs_op) {
     case 'add':
       $action = VERSIONCONTROL_ACTION_ADDED;
@@ -71,9 +74,6 @@ function xcvs_init($argc, $argv) {
       fwrite(STDERR, "Error: unknown tag action.\n");
       exit(5);
   }
-
-  // Do a full Drupal bootstrap.
-  xcvs_bootstrap($xcvs['drupal_path']);
 
   // Gather info for each tagged/branched file.
   $items = array();

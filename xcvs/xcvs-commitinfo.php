@@ -106,7 +106,7 @@ function xcvs_init($argc, $argv) {
       $commit_actions[$path] = $action;
     }
 
-    // CVS can't tell the branch at this point, so we need to pass NULL.
+    // CVS doesn't tell us the branch at this point, so we need to pass NULL.
     $access = versioncontrol_has_commit_access($commit, $commit_actions, NULL);
 
     // Fail and print out error messages if commit access has been denied.

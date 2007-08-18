@@ -55,9 +55,6 @@ function xcvs_init($argc, $argv) {
   }
   include_once $config_file;
 
-  // Do a full Drupal bootstrap.
-  xcvs_bootstrap($xcvs['drupal_path']);
-
   $username = array_shift($argv); // argv[2]
   $tag = array_shift($argv);      // argv[3]
   $type = array_shift($argv);     // argv[4]
@@ -65,6 +62,9 @@ function xcvs_init($argc, $argv) {
   $dir = array_shift($argv);      // argv[6]
 
   if ($xcvs['logs_combine']) {
+    // Do a full Drupal bootstrap.
+    xcvs_bootstrap($xcvs['drupal_path']);
+
     // The commitinfo script wrote the lastlog file for us.
     // Its only contents is the name of the last directory that commitinfo
     // was invoked with, and that order is the same one as for loginfo.
