@@ -99,7 +99,7 @@ function versioncontrol_cvs_uninstall() {
     if (!empty($repo_ids)) {
       // Repository ids are not given for branch operations, so we need to
       // retrieve the branch ids in order to delete the branch ops.
-      $result = db_query("SELECT branch_id FROM {versioncontrol_cvs_branches}
+      $result = db_query("SELECT branch_id FROM {versioncontrol_branches}
                           WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
       $branch_ids = array();
       $branch_id_constraints = array();
@@ -107,12 +107,14 @@ function versioncontrol_cvs_uninstall() {
         $branch_id_constraints[] = "branch_id = '%d'";
         $branch_ids[] = $branch->branch_id;
       }
-      if (!empty($branch_ids)) [
-        db_query("DELETE FROM {versioncontrol_cvs_branch_operations}
+      if (!empty($branch_ids)) {
+        db_query("DELETE FROM {versioncontrol_branch_operations}
                   WHERE ". implode(' OR ', $branch_id_constraints), $branch_ids);
       }
       // The other ones can be deleted by specifying the repository ids.
-      db_query("DELETE FROM {versioncontrol_cvs_branches}
+      db_query("DELETE FROM {versioncontrol_branches}
+                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
+      db_query("DELETE FROM {versioncontrol_tag_operations}
                 WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
       db_query("DELETE FROM {versioncontrol_commits}
                 WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
@@ -126,9 +128,6 @@ function versioncontrol_cvs_uninstall() {
   db_query("DROP TABLE {versioncontrol_cvs_accounts}");
   db_query("DROP TABLE {versioncontrol_cvs_repositories}");
   db_query("DROP TABLE {versioncontrol_cvs_commits}");
-  db_query("DROP TABLE {versioncontrol_cvs_branches}");
-  db_query("DROP TABLE {versioncontrol_cvs_branch_operations}");
-  db_query("DROP TABLE {versioncontrol_cvs_tag_operations}");
   db_query("DROP TABLE {versioncontrol_cvs_item_revisions}");
   db_query("DROP TABLE {versioncontrol_cvs_item_tags}");
   db_query("DROP TABLE {versioncontrol_cvs_item_branch_points}");
