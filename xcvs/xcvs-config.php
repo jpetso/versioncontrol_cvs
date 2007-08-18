@@ -89,6 +89,15 @@ function xcvs_bootstrap($drupal_path) {
   chdir($current_directory);
 }
 
+function xcvs_get_temp_directory($temp_path) {
+  $tempdir = preg_replace('/\/+$/', '', $temp_path); // strip trailing slashes
+  if (!(is_dir($tempdir) && is_writeable($tempdir))) {
+    fwrite(STDERR, "Error: failed to access the temporary directory ($tempdir).\n");
+    exit(2);
+  }
+  return $tempdir;
+}
+
 function xcvs_log_add($filename, $dir, $mode = 'w') {
   $fd = fopen($filename, $mode);
   fwrite($fd, $dir);

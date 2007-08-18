@@ -14,17 +14,15 @@
 //       not in here, but rather in the release node integration
 
 function xcvs_help($cli, $output_stream) {
-  fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTv}\n\n");
+  fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTVv}\n\n");
 }
 
 function xcvs_init($argc, $argv) {
-  fwrite(STDERR, print_r($argv, TRUE));
-
   $this_file = array_shift($argv);   // argv[0]
 
-  if ($argc < 10) {
+  if ($argc < 7) {
     xcvs_help($this_file, STDERR);
-    exit(2);
+    exit(3);
   }
 
   $config_file = array_shift($argv); // argv[1]
@@ -37,9 +35,12 @@ function xcvs_init($argc, $argv) {
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
     fwrite(STDERR, "Error: failed to load configuration file.\n");
-    exit(3);
+    exit(4);
   }
   include_once $config_file;
+
+  // Check temporary file storage.
+  $tempdir = xcvs_get_temp_directory($xcvs['temp']);
 
   if (in_array($username, $xcvs['allowed_users'])) {
     // admins and other privileged users don't need to go through any checks
@@ -61,7 +62,7 @@ function xcvs_init($argc, $argv) {
     case 'del':
       if (!$xcvs['allow_tag_removal']) {
         fwrite(STDERR, $xcvs['tag_delete_denied_message']);
-        exit(4);
+        exit(5);
       }
       // as $type == '?', we don't know if it's branches or tags,
       // so let go without asking the Version Control API
@@ -72,7 +73,7 @@ function xcvs_init($argc, $argv) {
 
     default:
       fwrite(STDERR, "Error: unknown tag action.\n");
-      exit(5);
+      exit(6);
   }
 
   // Gather info for each tagged/branched file.
@@ -80,13 +81,13 @@ function xcvs_init($argc, $argv) {
   while (!empty($argv)) {
     $filename = array_shift($argv);
     $source_branch = array_shift($argv);
-    $old_revision = array_shift($argv);
-    $new_revision = array_shift($argv);
+    $old = array_shift($argv);
+    $new = array_shift($argv);
 
     $item = array(
       'type' => VERSIONCONTROL_ITEM_FILE,
       'path' => '/'. $dir .'/'. $filename,
-      'revision' => ($new_revision != 'NONE') ? $new_revision : $old_revision,
+      'revision' => ($new != 'NONE') ? $new : $old,
     );
     if ($action != VERSIONCONTROL_ACTION_DELETED) {
       $item['source branch'] = empty($source_branch) ? 'HEAD' : $source_branch;
@@ -118,7 +119,7 @@ function xcvs_init($argc, $argv) {
   // Fail and print out error messages if branch/tag access has been denied.
   if (!$access) {
     fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
-    exit(6);
+    exit(7);
   }
   // If we get as far as this, the tagging/branching operation may happen.
 

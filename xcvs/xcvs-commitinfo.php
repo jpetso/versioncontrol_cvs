@@ -65,7 +65,7 @@ function xcvs_init($argc, $argv) {
 
   if ($argc < 5) {
     xcvs_help($this_file, STDERR);
-    exit(2);
+    exit(3);
   }
 
   $files = array_slice($argv, 4);
@@ -78,21 +78,17 @@ function xcvs_init($argc, $argv) {
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
     fwrite(STDERR, "Error: failed to load configuration file.\n");
-    exit(3);
+    exit(4);
   }
   include_once $config_file;
+
+  // Check temporary file storage.
+  $tempdir = xcvs_get_temp_directory($xcvs['temp']);
 
   // admins and other privileged users don't need to go through any checks
   if (!in_array($username, $xcvs['allowed_users'])) {
     // Do a full Drupal bootstrap.
     xcvs_bootstrap($xcvs['drupal_path']);
-
-    // Check temporary file storage.
-    $tempdir = preg_replace('/\/+$/', '', $xcvs['temp']); // strip trailing slashes
-    if (!(is_dir($tempdir) && is_writeable($tempdir))) {
-      fwrite(STDERR, "Error: failed to access the temporary directory ($tempdir).\n");
-      exit(4);
-    }
 
     // Construct a minimal commit array.
     $commit = array(
@@ -112,7 +108,7 @@ function xcvs_init($argc, $argv) {
     // Fail and print out error messages if commit access has been denied.
     if (!$access) {
       fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
-      exit(6);
+      exit(5);
     }
   }
   // If we get as far as this, the commit may happen.

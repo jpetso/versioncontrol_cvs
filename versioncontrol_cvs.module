@@ -358,7 +358,7 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
  */
 function versioncontrol_cvs_branch_operation($op, $branch, $branched_items) {
   _versioncontrol_cvs_branch_or_tag_operation(
-    $op, $tag, $tagged_items, 'item_branch_points', 'branch_op_id'
+    $op, $branch, $branched_items, 'item_branch_points', 'branch_op_id'
   );
 }
 
@@ -401,8 +401,8 @@ function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items
                             $item['path'], $item['revision']);
 
         while ($revision = db_fetch_object($result)) {
-          db_query("INSERT INTO {versioncontrol_cvs_'. $table_name .'}
-                    ('. $primary_key_name .', item_revision_id)
+          db_query("INSERT INTO {versioncontrol_cvs_". $table_name ."}
+                    (". $primary_key_name .", item_revision_id)
                     VALUES ('%d', '%d')",
                     $branch_or_tag[$primary_key_name],
                     $revision->item_revision_id);
@@ -411,8 +411,8 @@ function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items
       break;
 
     case 'delete':
-      db_query("DELETE FROM {versioncontrol_cvs_'. $table_name .'}
-                WHERE '. $primary_key_name .' = '%d'",
+      db_query("DELETE FROM {versioncontrol_cvs_". $table_name ."}
+                WHERE ". $primary_key_name ." = '%d'",
                 $branch_or_tag[$primary_key_name]);
       break;
   }

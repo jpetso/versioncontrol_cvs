@@ -14,7 +14,7 @@
 //       not in here, but rather in the release node integration
 
 function xcvs_help($cli, $output_stream) {
-  fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTv}\n\n");
+  fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTVv}\n\n");
 }
 
 function xcvs_exit($status, $lastlog, $summary) {
@@ -37,13 +37,11 @@ function xcvs_get_item($action, $file_entry) {
 }
 
 function xcvs_init($argc, $argv) {
-  fwrite(STDERR, print_r($argv, TRUE));
-
   $this_file = array_shift($argv);   // argv[0]
 
-  if ($argc < 10) {
+  if ($argc < 7) {
     xcvs_help($this_file, STDERR);
-    exit(2);
+    exit(3);
   }
 
   $config_file = array_shift($argv); // argv[1]
@@ -51,9 +49,12 @@ function xcvs_init($argc, $argv) {
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
     fwrite(STDERR, "Error: failed to load configuration file.\n");
-    exit(3);
+    exit(4);
   }
   include_once $config_file;
+
+  // Check temporary file storage.
+  $tempdir = xcvs_get_temp_directory($xcvs['temp']);
 
   $username = array_shift($argv); // argv[2]
   $tag = array_shift($argv);      // argv[3]
@@ -76,8 +77,8 @@ function xcvs_init($argc, $argv) {
       $filename = array_shift($argv);
       $source_branch = array_shift($argv);
       $source_branch = empty($source_branch) ? 'HEAD' : $source_branch;
-      $old_revision = array_shift($argv);
-      $old_revision = array_shift($argv);
+      $old = array_shift($argv);
+      $new = array_shift($argv);
       xcvs_log_add($summary, "/$dir/$filename,$source_branch,$old,$new\n", 'a');
     }
 
@@ -105,7 +106,7 @@ function xcvs_init($argc, $argv) {
 
         default:
           fwrite(STDERR, "Error: unknown tag action.\n");
-          xcvs_exit(4, $lastlog, $summary);
+          xcvs_exit(5, $lastlog, $summary);
       }
 
       // Convert the previously written temporary log file
@@ -113,7 +114,7 @@ function xcvs_init($argc, $argv) {
       $fd = fopen($summary, "r");
       if ($fd === FALSE) {
         fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
-        xcvs_exit(5, $lastlog, $summary);
+        xcvs_exit(6, $lastlog, $summary);
       }
       $items = array();
 
@@ -132,7 +133,6 @@ function xcvs_init($argc, $argv) {
       }
 
       $tag_or_branch = array(
-        'name' => $tag,
         'action' => $action,
         'date' => time(),
         'username' => $username,
@@ -141,9 +141,11 @@ function xcvs_init($argc, $argv) {
       );
 
       if ($type == 'N') { // is a tag
+        $tag_or_branch['tag_name'] = $tag;
         versioncontrol_insert_tag_operation($tag_or_branch, $items);
       }
       else if ($type == 'T') { // is a branch
+        $tag_or_branch['branch_name'] = $tag;
         versioncontrol_insert_branch_operation($tag_or_branch, $items);
       }
     }

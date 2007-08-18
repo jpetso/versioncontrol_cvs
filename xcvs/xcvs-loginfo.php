@@ -103,7 +103,7 @@ function xcvs_init($argc, $argv) {
 
   if ($argc < 7) {
     xcvs_help($this_file, STDERR);
-    exit(2);
+    exit(3);
   }
 
   $config_file = array_shift($argv); // argv[1]
@@ -113,16 +113,12 @@ function xcvs_init($argc, $argv) {
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
     fwrite(STDERR, "Error: failed to load configuration file.\n");
-    exit(3);
+    exit(4);
   }
   include_once $config_file;
 
   // Check temporary file storage.
-  $tempdir = preg_replace('/\/+$/', '', $xcvs['temp']); // strip trailing slashes
-  if (!(is_dir($tempdir) && is_writeable($tempdir))) {
-    fwrite(STDERR, "Error: failed to access the temporary directory ($tempdir).\n");
-    exit(4);
-  }
+  $tempdir = xcvs_get_temp_directory($xcvs['temp']);
 
   if ($xcvs['logs_combine']) {
     // The commitinfo script wrote the lastlog file for us.
