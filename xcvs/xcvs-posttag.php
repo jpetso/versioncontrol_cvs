@@ -3,7 +3,8 @@
 // $Id$
 /**
  * @file
- * Provides access checking for 'cvs tag' commands.
+ * Insert branch/tag info into the Drupal database by processing
+ * command line input and sending it to the Version Control API.
  *
  * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
@@ -57,7 +58,7 @@ function xcvs_init($argc, $argv) {
   $tempdir = xcvs_get_temp_directory($xcvs['temp']);
 
   $username = array_shift($argv); // argv[2]
-  $tag = array_shift($argv);      // argv[3]
+  $tag_name = array_shift($argv); // argv[3]
   $type = array_shift($argv);     // argv[4]
   $cvs_op = array_shift($argv);   // argv[5]
   $dir = array_shift($argv);      // argv[6]
@@ -132,7 +133,7 @@ function xcvs_init($argc, $argv) {
         xcvs_exit(0, $lastlog, $summary);
       }
 
-      $tag_or_branch = array(
+      $branch_or_tag = array(
         'action' => $action,
         'date' => time(),
         'username' => $username,
@@ -141,12 +142,12 @@ function xcvs_init($argc, $argv) {
       );
 
       if ($type == 'N') { // is a tag
-        $tag_or_branch['tag_name'] = $tag;
-        versioncontrol_insert_tag_operation($tag_or_branch, $items);
+        $branch_or_tag['tag_name'] = $tag_name;
+        versioncontrol_insert_tag_operation($branch_or_tag, $items);
       }
       else if ($type == 'T') { // is a branch
-        $tag_or_branch['branch_name'] = $tag;
-        versioncontrol_insert_branch_operation($tag_or_branch, $items);
+        $branch_or_tag['branch_name'] = $tag_name;
+        versioncontrol_insert_branch_operation($branch_or_tag, $items);
       }
     }
 

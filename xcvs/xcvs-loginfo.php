@@ -32,7 +32,7 @@ function xcvs_get_commit_action($file_entry) {
         'current item' => array(
           'type' => VERSIONCONTROL_ITEM_DIRECTORY,
           'path' => $path,
-          'revision' => NULL,
+          'revision' => '',
         ),
       );
       return array($path, $action);
@@ -218,7 +218,7 @@ function xcvs_init($argc, $argv) {
           'uid' => $uid,
           'username' => $username,
           'message' => $message,
-          'revision' => NULL,
+          'revision' => '',
           'cvs_specific' => array(
             'branch_id' => $branch_id,
           ),

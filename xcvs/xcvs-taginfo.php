@@ -27,7 +27,7 @@ function xcvs_init($argc, $argv) {
 
   $config_file = array_shift($argv); // argv[1]
   $username = array_shift($argv);    // argv[2]
-  $tag = array_shift($argv);         // argv[3]
+  $tag_name = array_shift($argv);    // argv[3]
   $type = array_shift($argv);        // argv[4]
   $cvs_op = array_shift($argv);      // argv[5]
   $dir = array_shift($argv);         // argv[6]
@@ -100,7 +100,7 @@ function xcvs_init($argc, $argv) {
     exit(0); // if nothing is being tagged, we don't need to control access.
   }
 
-  $tag_or_branch = array(
+  $branch_or_tag = array(
     'action' => $action,
     'username' => $username,
     'repo_id' => $xcvs['repo_id'],
@@ -108,12 +108,12 @@ function xcvs_init($argc, $argv) {
   );
 
   if ($type == 'N') { // is a tag
-    $tag_or_branch['tag_name'] = $tag;
-    $access = versioncontrol_has_tag_access($tag_or_branch, $items);
+    $branch_or_tag['tag_name'] = $tag_name;
+    $access = versioncontrol_has_tag_access($branch_or_tag, $items);
   }
   else if ($type == 'T') { // is a branch
-    $tag_or_branch['branch_name'] = $tag;
-    $access = versioncontrol_has_branch_access($tag_or_branch, $items);
+    $branch_or_tag['branch_name'] = $tag_name;
+    $access = versioncontrol_has_branch_access($branch_or_tag, $items);
   }
 
   // Fail and print out error messages if branch/tag access has been denied.

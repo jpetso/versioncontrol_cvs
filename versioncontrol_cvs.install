@@ -41,13 +41,13 @@ function versioncontrol_cvs_install() {
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
         item_revision_id int unsigned NOT NULL default '0',
         commit_id int unsigned NOT NULL default '0',
+        action tinyint unsigned NOT NULL default '0',
         type tinyint NOT NULL default '0',
         path varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
-        action tinyint unsigned NOT NULL default '0',
+        source_revision varchar(255) NOT NULL default '',
         lines_added smallint unsigned NOT NULL default '0',
         lines_removed smallint unsigned NOT NULL default '0',
-        source_revision varchar(255) NOT NULL default '',
         PRIMARY KEY (item_revision_id),
         UNIQUE KEY (commit_id, path)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
