@@ -141,10 +141,15 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
  * Add CVS specific elements to the edit/register user account form.
  */
 function versioncontrol_cvs_account_form_alter($form_id, &$form) {
+  if (empty($form['original_username']['#value'])) { // creating the account
+    $description = t('Choose a password to access the CVS repository with.');
+  }
+  else { // editing the account
+    $description = t('To change the current CVS password, enter the new password in both fields.');
+  }
   $form['account']['account_password'] = array(
     '#type' => 'password_confirm',
-    '#title' => t('CVS password'),
-    '#description' => t('To change the current CVS password, enter the new password in both fields.'),
+    '#description' => $description,
     '#weight' => 10,
   );
   $form['#validate']['versioncontrol_cvs_account_form_validate'] = array();
