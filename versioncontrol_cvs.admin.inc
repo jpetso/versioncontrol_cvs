@@ -149,6 +149,7 @@ function versioncontrol_cvs_account_form_alter($form_id, &$form) {
   }
   $form['account']['account_password'] = array(
     '#type' => 'password_confirm',
+    '#title' => t('CVS password'),
     '#description' => $description,
     '#weight' => 10,
   );
