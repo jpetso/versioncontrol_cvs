@@ -45,7 +45,7 @@ function xcvs_get_commit_action($file_entry) {
       $action['action'] = VERSIONCONTROL_ACTION_ADDED;
     }
     else if ($new == 'NONE') {
-      $action['action'] = VERSIONCONTROL_ACTION_REMOVED;
+      $action['action'] = VERSIONCONTROL_ACTION_DELETED;
     }
     else {
       $action['action'] = VERSIONCONTROL_ACTION_MODIFIED;
@@ -108,7 +108,7 @@ function xcvs_init($argc, $argv) {
 
   $config_file = array_shift($argv); // argv[1]
   $username = array_shift($argv);    // argv[2]
-  $commitdir = array_shift($argv);   // argv[3]
+  $commitdir = '/'. array_shift($argv);   // argv[3]
 
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
@@ -130,14 +130,14 @@ function xcvs_init($argc, $argv) {
     // Write the changed items to a temporary log file, one by one.
     if (!empty($argv)) {
       if ($argv[0] == '- New directory') {
-        xcvs_log_add($summary, "/$commitdir,dir\n", 'a');
+        xcvs_log_add($summary, "$commitdir,dir\n", 'a');
       }
       else {
         while (!empty($argv)) {
           $filename = array_shift($argv);
           $old = array_shift($argv);
           $new = array_shift($argv);
-          xcvs_log_add($summary, "/$commitdir/$filename,$old,$new\n", 'a');
+          xcvs_log_add($summary, "$commitdir/$filename,$old,$new\n", 'a');
         }
       }
     }
