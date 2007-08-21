@@ -6,14 +6,10 @@ Provides CVS commit information and account management as a pluggable backend.
 
 SHORT DESCRIPTION
 -----------------
-This module is a work in progress, and not yet ready to use.
-It's one of those modules being created within the Google Summer of Code 2007.
-When it's done, the description might look approximately like this:
-
 This module provides an implementation of the Version Control API that makes
 it possible to use the CVS version control system. It can retrieve commit
-information by parsing commit logs or by having the xcvs-* scripts called by
-into CVS's commit hooks, and is able to programmatically manage CVS accounts.
+information by parsing commit logs or by using the xcvs-* trigger scripts
+that are called directly by CVS when a commit or tag operation is executed.
 
 For the API documentation, have a look at the module file or run doxygen/phpdoc
 on it to get a fancier version of the docs.
