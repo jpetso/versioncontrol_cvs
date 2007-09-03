@@ -616,3 +616,106 @@ function versioncontrol_cvs_account($op, $uid, $username, $repository, $addition
       break;
   }
 }
+
+/**
+ * Implementation of [vcs_backend]_import_accounts():
+ * Import accounts into a repository, given text data from the accounts file.
+ * No accounts are deleted, new accounts are inserted, and existing accounts
+ * are updated with imported ones.
+ *
+ * @param $repository
+ *   The repository where the accounts will be imported.
+ * @param $data
+ *   The contents of the "account data" text area where the user has to
+ *   enter/copy the contents of the version control system's accounts file.
+ */
+function versioncontrol_cvs_import_accounts($repository, $data) {
+  $lines = explode("\n", $data);
+  $names = array();
+
+  foreach ($lines as $line) {
+    // TODO: find out the substitute for "whitespace character"
+    if (preg_match('/^\s*(#.*)?$/', $line)) { // filter out empty and commented lines
+      continue;
+    }
+    // Extract the account information and create or update the user accounts.
+    list($username, $password, $run_as_user) = explode(':', $line);
+    if (!empty($username) && !empty($password)) {
+      $additional_data = array(
+        'cvs_specific' => array('password' => $password),
+      );
+      $uid = versioncontrol_get_account_uid_for_username($repository['repo_id'], $username, TRUE);
+
+      if (isset($uid)) {
+        versioncontrol_update_account($repository, $uid, $username, $additional_data);
+        $names[] = t('updated !username', array('!username' => $username));
+      }
+      else {
+        $uid = db_result(db_query("SELECT uid FROM {users} WHERE name = '%s'", $username));
+        if ($uid) {
+          versioncontrol_insert_account($repository, $uid, $username, $additional_data);
+          $names[] = t('added !username', array('!username' => $username));
+        }
+        else {
+          $names[] = t('didn\'t add !username (no matching Drupal username exists)',
+                       array('!username' => $username));
+        }
+      }
+    }
+  }
+
+  if (empty($names)) {
+    drupal_set_message(t('Failed to import CVS accounts.'), 'error');
+  }
+  else {
+    drupal_set_message(theme('item_list', $names, t('The import of CVS accounts has been completed successfully:')));
+  }
+}
+
+/**
+ * Implementation of [vcs_backend]_export_accounts():
+ * Export accounts of a repository to text data that is suitable for
+ * copying to the version control system's accounts file.
+ *
+ * @param $repository
+ *   The repository whose accounts will be exported.
+ * @param $accounts
+ *   The list (array) of accounts that should be exported, given in the same
+ *   format as the return value of versioncontrol_get_accounts().
+ *   All accounts in this list are from the above repository.
+ *
+ * @return
+ *   The exported textual representation of the account list.
+ */
+function versioncontrol_cvs_export_accounts($repository, $accounts) {
+  $accounts_flat = array();
+  $uid_constraints = array();
+  $params = array($repository['repo_id']);
+
+  foreach ($accounts as $uid => $usernames_per_repository) {
+    foreach ($usernames_per_repository as $repo_id => $username) {
+      $accounts_flat[$uid] = array('uid' => $uid, 'username' => $username);
+      $uid_constraints[] = "uid = '%d'";
+      $params[] = $uid;
+    }
+  }
+
+  $result = db_query("SELECT uid, password FROM {versioncontrol_cvs_accounts}
+                      WHERE repo_id = '%d'
+                       AND (". implode(' OR ', $uid_constraints) .")",
+                      $params);
+  while ($account = db_fetch_object($result)) {
+    $accounts_flat[$account->uid]['password'] = $account->password;
+  }
+
+  $run_as_user = '';
+  if (!empty($repository['run_as_user'])) {
+    $run_as_user = ':'. $repository['run_as_user'];
+  }
+  $data = '';
+  foreach ($accounts_flat as $uid => $account) {
+    $data .= '# '. url('user/'. $uid, NULL, NULL, TRUE) ."\n";
+    $data .= $account['username'] .':'. $account['password'] . $run_as_user ."\n\n";
+  }
+  return $data;
+}

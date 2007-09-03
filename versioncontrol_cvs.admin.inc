@@ -65,6 +65,25 @@ function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
       VERSIONCONTROL_CVS_UPDATE_XCVS => t('Use external script to insert data.'),
     ),
   );
+
+  $form['cvs_export_information'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Account export information'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#weight' => 1,
+  );
+  $form['cvs_export_information']['run_as_user'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Run as different system user'),
+    '#description' => t('If this is empty, the exported account data will cause server-side CVS to be run with the system user corresponding to the authenticated CVS account name. If this field is not empty and you specify a different system username here, the exported account data will cause CVS to run as this user instead.'),
+    '#default_value' => isset($repository)
+                        ? $repository['cvs_specific']['run_as_user']
+                        : 'drupal-cvs',
+    '#weight' => 0,
+    '#size' => 40,
+    '#maxlength' => 255,
+  );
 }
 
 /**
@@ -81,6 +100,7 @@ function versioncontrol_cvs_versioncontrol_extract_repository_data($form_values)
       'modules'       => $modules,
       'update_method' => $form_values['update_method'],
       'updated'       => $form_values['updated'],
+      'run_as_user'   => $form_values['run_as_user'],
     ),
   );
 }

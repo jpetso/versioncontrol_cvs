@@ -29,6 +29,7 @@ function versioncontrol_cvs_install() {
         modules varchar(255) NOT NULL default '',
         update_method tinyint unsigned NOT NULL default '0',
         updated int unsigned NOT NULL default '0',
+        run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
