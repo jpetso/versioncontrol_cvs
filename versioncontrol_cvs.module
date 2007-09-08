@@ -7,6 +7,7 @@
  *
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
+// TODO: Port log parsing from cvs.module.
 
 // Update methods.
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);

@@ -64,10 +64,56 @@ function versioncontrol_cvs_install() {
         item_revision_id int unsigned NOT NULL default '0',
         PRIMARY KEY (branch_op_id, item_revision_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
       break;
 
     case 'pgsql':
+      db_query("CREATE TABLE {versioncontrol_accounts} (
+        uid int NOT NULL default '0',
+        repo_id int NOT NULL default '0',
+        password varchar(64) NOT NULL default '',
+        PRIMARY KEY (uid, repo_id)
+      )");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_repositories} (
+        repo_id int NOT NULL default '0',
+        modules varchar(255) NOT NULL default '',
+        update_method smallint NOT NULL default '0',
+        updated int NOT NULL default '0',
+        run_as_user varchar(255) NOT NULL default '',
+        PRIMARY KEY (repo_id)
+      )");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_commits} (
+        commit_id int NOT NULL default '0',
+        branch_id int NOT NULL default '0',
+        PRIMARY KEY (commit_id)
+      )");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
+        item_revision_id int NOT NULL default '0',
+        commit_id int NOT NULL default '0',
+        action smallint NOT NULL default '0',
+        type smallint NOT NULL default '0',
+        path varchar(255) NOT NULL default '',
+        revision varchar(255) NOT NULL default '',
+        source_revision varchar(255) NOT NULL default '',
+        lines_added smallint NOT NULL default '0',
+        lines_removed smallint NOT NULL default '0',
+        PRIMARY KEY (item_revision_id),
+        UNIQUE (commit_id, path)
+      )");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
+        tag_op_id int NOT NULL default '0',
+        item_revision_id int NOT NULL default '0',
+        PRIMARY KEY (tag_op_id, item_revision_id)
+      )");
+
+      db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
+        branch_op_id int NOT NULL default '0',
+        item_revision_id int NOT NULL default '0',
+        PRIMARY KEY (branch_op_id, item_revision_id)
+      )");
       break;
   }
 }
