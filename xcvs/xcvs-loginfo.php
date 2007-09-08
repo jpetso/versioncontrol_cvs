@@ -224,13 +224,11 @@ function xcvs_init($argc, $argv) {
           ),
         );
         versioncontrol_insert_commit($commit, $commit_actions);
-
-        // TODO: tag checking in project node integration?
       }
-    }
 
-    // Clean up
-    xcvs_exit(0, $lastlog, $summary);
+      // Clean up
+      xcvs_exit(0, $lastlog, $summary);
+    }
   }
   exit(0);
 }

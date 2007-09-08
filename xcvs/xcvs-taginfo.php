@@ -43,7 +43,7 @@ function xcvs_init($argc, $argv) {
   $tempdir = xcvs_get_temp_directory($xcvs['temp']);
 
   // Admins and other privileged users don't need to go through any checks.
-  if (in_array($username, $xcvs['allowed_users'])) {
+  if (!in_array($username, $xcvs['allowed_users'])) {
     // Do a full Drupal bootstrap.
     xcvs_bootstrap($xcvs['drupal_path']);
 

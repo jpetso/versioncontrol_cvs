@@ -87,7 +87,7 @@ function xcvs_init($argc, $argv) {
     // gathered, the currently processed directory matches the last processed
     // directory that taginfo was invoked with, which means we've got all the
     // needed data in the summary file.
-    if (xcvs_is_last_directory($lastlog, $commitdir)) {
+    if (xcvs_is_last_directory($lastlog, $dir)) {
       switch ($cvs_op) {
         case 'add':
           $action = VERSIONCONTROL_ACTION_ADDED;
@@ -149,10 +149,10 @@ function xcvs_init($argc, $argv) {
         $branch_or_tag['branch_name'] = $tag_name;
         versioncontrol_insert_branch_operation($branch_or_tag, $items);
       }
-    }
 
-    // Clean up.
-    xcvs_exit(0, $lastlog, $summary);
+      // Clean up.
+      xcvs_exit(0, $lastlog, $summary);
+    }
   }
   exit(0);
 }
