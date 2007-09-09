@@ -635,7 +635,6 @@ function versioncontrol_cvs_import_accounts($repository, $data) {
   $names = array();
 
   foreach ($lines as $line) {
-    // TODO: find out the substitute for "whitespace character"
     if (preg_match('/^\s*(#.*)?$/', $line)) { // filter out empty and commented lines
       continue;
     }
