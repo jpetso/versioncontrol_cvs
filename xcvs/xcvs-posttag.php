@@ -138,6 +138,7 @@ function xcvs_init($argc, $argv) {
         'date' => time(),
         'username' => $username,
         'repo_id' => $xcvs['repo_id'],
+        'message' => '',
         'cvs_specific' => array(),
       );
 
