@@ -71,7 +71,7 @@ function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
     '#title' => t('Account export information'),
     '#collapsible' => TRUE,
     '#collapsed' => TRUE,
-    '#weight' => 1,
+    '#weight' => 2,
   );
   $form['cvs_export_information']['run_as_user'] = array(
     '#type' => 'textfield',
