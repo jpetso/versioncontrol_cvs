@@ -169,10 +169,6 @@ function xcvs_init($argc, $argv) {
       }
       fclose($fd);
 
-      // TODO: Send out notification mails. Those should be moved to the
-      //       real modules, ideally invoked by the
-      //       versioncontrol_commit($op = 'insert') hook.
-
       // Integrate with the Drupal Version Control API.
       if (!empty($commit_actions)) {
 

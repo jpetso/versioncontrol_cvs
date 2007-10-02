@@ -20,17 +20,6 @@ $xcvs['drupal_path'] = '/home/username/public_html';
 // File location where to store temporary files.
 $xcvs['temp'] = "/tmp";
 
-// e-mail address where all cvs commit log emails should be sent. If not
-// specified, e-mails are only sent if $xcvs["logs_mailto_maintainers"] is TRUE.
-$xcvs['logs_mailto'] = 'user@example.com';
-
-// Should commit log emais be sent to project owners and maintainers
-// TODO:  write code to make this happen
-$xcvs['logs_mailto_maintainers'] = TRUE;
-
-// From header to use for commit log emails.
-$xcvs['logs_from'] = 'admin@example.com';
-
 // Drupal repository id that this installation of scripts is going to
 // interact with. If you only have one repository, leave this as '1'.
 // If you have multiple repositories installed via the cvs.module, you
