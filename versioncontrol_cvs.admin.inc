@@ -19,10 +19,10 @@ define('VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH', 5);
  * administrative forms that the Version Control API provides.
  */
 function versioncontrol_cvs_form_alter($form_id, &$form) {
-  if ($form['#id'] == 'vcs-repository-form' && $form['#vcs'] == 'cvs') {
+  if ($form['#id'] == 'versioncontrol-repository-form' && $form['#vcs'] == 'cvs') {
     versioncontrol_cvs_repository_admin_form_alter($form_id, $form);
   }
-  else if ($form['#id'] == 'vcs-account-form' && $form['#vcs'] == 'cvs') {
+  else if ($form['#id'] == 'versioncontrol-account-form' && $form['#vcs'] == 'cvs') {
     versioncontrol_cvs_account_form_alter($form_id, $form);
   }
 }
