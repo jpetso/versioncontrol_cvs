@@ -168,39 +168,47 @@ function versioncontrol_cvs_get_commit_actions($commit) {
 }
 
 /**
- * Implementation of [versioncontrol_backend]_get_commit_directory_item():
+ * Implementation of [versioncontrol_backend]_get_directory_item():
  * Retrieve the item of the deepest-level directory in the repository that is
- * common to all the changed items in a commit. In other words, this function
- * gets you the item for $commit['directory'].
+ * common to all the changed/branched/tagged items in a commit, branch or
+ * tag operation. In other words, this function gets you the item
+ * for $operation['directory'].
  *
- * @param $commit
- *   The commit whose deepest-level changed directory should be retrieved.
+ * @param $operation
+ *   The commit, branch or tag operation whose deepest-level
+ *   changed/branched/tagged directory should be retrieved.
  *
  * @return
  *   The requested directory item. Item values are structured arrays and
  *   consist of elements with the following keys:
  *
- *   'type': Specifies the item type, which in this case can only be
- *           VERSIONCONTROL_ITEM_DIRECTORY.
- *   'path': The path of the directory at the time of the commit.
- *   'revision': The (file-level) revision when the item was last changed.
- *               If there is no such revision (which may be the case for
- *               directory items) then the 'revision' element is
- *               an empty string.
- *   '[xxx]_specific': May be set by the backend to remember additional
- *                     item info. ("[xxx]" is the unique string identifier
- *                     of the respective version control system.)
+ *   - 'type': Specifies the item type, which in this case can only be
+ *        VERSIONCONTROL_ITEM_DIRECTORY.
+ *   - 'path': The path of the directory, which will be the same
+ *        as $operation['directory'].
+ *   - 'revision': The (file-level) revision when the item was last changed.
+ *        If there is no such revision (which may be the case for
+ *        directory items) then the 'revision' element is an empty string.
+ *   - '[xxx]_specific': May be set by the backend to remember additional
+ *        item info. ("[xxx]" is the unique string identifier
+ *        of the respective version control system.)
  */
-function versioncontrol_cvs_get_commit_directory_item($commit) {
-  return array(
+function versioncontrol_cvs_get_directory_item($operation) {
+  $item = array(
     'type' => VERSIONCONTROL_ITEM_DIRECTORY,
-    'path' => $commit['directory'],
+    'path' => $operation['directory'],
     'revision' => '',
     'cvs_specific' => array(
-      'selected_branch_id' => $commit['cvs_specific']['branch_id'],
-      'selected_date' => $commit['date'],
+      'selected_date' => $operation['date'],
     ),
   );
+  if (isset($operation['cvs_specific']['branch_id'])) { // it's a commit or branch
+    $item['selected_branch_id'] = $operation['cvs_specific']['branch_id'];
+  }
+  if (isset($operation['tag_op_id'])) { // it's a tag
+    $item['selected_tag_op'] = $operation;
+  }
+  return $item;
 }
 
 /**
@@ -237,22 +245,18 @@ function versioncontrol_cvs_get_commit_branches($commit) {
  *   Item values are structured arrays and consist of elements
  *   with the following keys:
  *
- *   'type': Specifies the item type, which is either
- *           VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
- *   'path': The path of the item at the specific revision.
- *   'revision': The (file-level) revision when the item was changed.
- *               If there is no such revision (which may be the case for
- *               directory items) then the 'revision' element is
- *               an empty string.
- *   'source branch': Optional, may be set by the backend if the source branch
- *                    (the one that this one branched off) can be retrieved.
- *                    If given, this is a string with the original branch name.
- *   '[xxx]_specific': May be set by the backend to remember additional
- *                     item info. ("[xxx]" is the unique string identifier
- *                     of the respective version control system.)
- *
- *   A real-life example of such a result array can be found
- *   in the FakeVCS example module.
+ *   - 'type': Specifies the item type, which is either
+ *        VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
+ *   - 'path': The path of the item at the specific revision.
+ *   - 'revision': The (file-level) revision when the item was changed.
+ *        If there is no such revision (which may be the case for
+ *        directory items) then the 'revision' element is an empty string.
+ *   - 'source branch': Optional, may be set by the backend if the
+ *        source branch (the one that this one branched off) can be retrieved.
+ *        If given, this is a string with the original branch name.
+ *   - '[xxx]_specific': May be set by the backend to remember additional
+ *        item info. ("[xxx]" is the unique string identifier of the respective
+ *        version control system.)
  */
 function versioncontrol_cvs_get_branched_items($branch) {
   $items = array();
@@ -290,22 +294,18 @@ function versioncontrol_cvs_get_branched_items($branch) {
  *   Item values are structured arrays and consist of elements
  *   with the following keys:
  *
- *   'type': Specifies the item type, which is either
- *           VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
- *   'path': The path of the item at the specific revision.
- *   'revision': The (file-level) revision when the item was changed.
- *               If there is no such revision (which may be the case for
- *               directory items) then the 'revision' element is
- *               an empty string.
- *   'source tag': Optional, may be set by the backend if the source tag
- *                    (the one that this one tagged off) can be retrieved.
- *                    If given, this is a string with the original tag name.
- *   '[xxx]_specific': May be set by the backend to remember additional
- *                     item info. ("[xxx]" is the unique string identifier
- *                     of the respective version control system.)
- *
- *   A real-life example of such a result array can be found
- *   in the FakeVCS example module.
+ *   - 'type': Specifies the item type, which is either
+ *        VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
+ *   - 'path': The path of the item at the specific revision.
+ *   - 'revision': The (file-level) revision when the item was changed.
+ *        If there is no such revision (which may be the case for
+ *        directory items) then the 'revision' element is an empty string.
+ *   - 'source branch': Optional, may be set by the backend if the
+ *        source branch (the one that this tag comes from) can be retrieved.
+ *        If given, this is a string with the original branch name.
+ *   - '[xxx]_specific': May be set by the backend to remember additional
+ *        item info. ("[xxx]" is the unique string identifier of the respective
+ *        version control system.)
  */
 function versioncontrol_cvs_get_tagged_items($tag) {
   $items = array();
