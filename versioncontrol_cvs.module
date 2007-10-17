@@ -263,7 +263,7 @@ function versioncontrol_cvs_get_branched_items($branch) {
   $result = db_query("SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
                       FROM {versioncontrol_cvs_item_branch_points} ib
                        INNER JOIN {versioncontrol_cvs_item_revisions} ir
-                        ON ib.item_revision_id = ir._item_revision_id
+                        ON ib.item_revision_id = ir.item_revision_id
                       WHERE ib.branch_op_id = '%d'", $branch['branch_op_id']);
 
   while ($item_revision = db_fetch_object($result)) {
@@ -312,7 +312,7 @@ function versioncontrol_cvs_get_tagged_items($tag) {
   $result = db_query("SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
                       FROM {versioncontrol_cvs_item_tags} it
                        INNER JOIN {versioncontrol_cvs_item_revisions} ir
-                        ON it.item_revision_id = ir._item_revision_id
+                        ON it.item_revision_id = ir.item_revision_id
                       WHERE it.tag_op_id = '%d'", $tag['tag_op_id']);
 
   while ($item_revision = db_fetch_object($result)) {
