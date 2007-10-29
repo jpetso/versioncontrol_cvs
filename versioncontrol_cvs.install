@@ -18,100 +18,100 @@ function versioncontrol_cvs_install() {
     case 'mysqli':
     case 'mysql':
       db_query("CREATE TABLE {versioncontrol_cvs_accounts} (
-        uid int unsigned NOT NULL default '0',
-        repo_id int unsigned NOT NULL default '0',
+        uid int unsigned NOT NULL default 0,
+        repo_id int unsigned NOT NULL default 0,
         password varchar(64) NOT NULL default '',
         PRIMARY KEY (uid, repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_repositories} (
-        repo_id int unsigned NOT NULL default '0',
+        repo_id int unsigned NOT NULL default 0,
         modules varchar(255) NOT NULL default '',
-        update_method tinyint unsigned NOT NULL default '0',
-        updated int unsigned NOT NULL default '0',
+        update_method tinyint unsigned NOT NULL default 0,
+        updated int unsigned NOT NULL default 0,
         run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_commits} (
-        commit_id int unsigned NOT NULL default '0',
-        branch_id int unsigned NOT NULL default '0',
+        commit_id int unsigned NOT NULL default 0,
+        branch_id int unsigned NOT NULL default 0,
         PRIMARY KEY (commit_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
-        item_revision_id int unsigned NOT NULL default '0',
-        commit_id int unsigned NOT NULL default '0',
-        action tinyint unsigned NOT NULL default '0',
-        type tinyint NOT NULL default '0',
+        item_revision_id int unsigned NOT NULL default 0,
+        commit_id int unsigned NOT NULL default 0,
+        action tinyint unsigned NOT NULL default 0,
+        type tinyint NOT NULL default 0,
         path varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
         source_revision varchar(255) NOT NULL default '',
-        lines_added smallint unsigned NOT NULL default '0',
-        lines_removed smallint unsigned NOT NULL default '0',
+        lines_added smallint unsigned NOT NULL default 0,
+        lines_removed smallint unsigned NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
         UNIQUE KEY (commit_id, path)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
-        tag_op_id int unsigned NOT NULL default '0',
-        item_revision_id int unsigned NOT NULL default '0',
+        tag_op_id int unsigned NOT NULL default 0,
+        item_revision_id int unsigned NOT NULL default 0,
         PRIMARY KEY (tag_op_id, item_revision_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
-        branch_op_id int unsigned NOT NULL default '0',
-        item_revision_id int unsigned NOT NULL default '0',
+        branch_op_id int unsigned NOT NULL default 0,
+        item_revision_id int unsigned NOT NULL default 0,
         PRIMARY KEY (branch_op_id, item_revision_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
       break;
 
     case 'pgsql':
       db_query("CREATE TABLE {versioncontrol_accounts} (
-        uid int NOT NULL default '0',
-        repo_id int NOT NULL default '0',
+        uid int NOT NULL default 0,
+        repo_id int NOT NULL default 0,
         password varchar(64) NOT NULL default '',
         PRIMARY KEY (uid, repo_id)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_repositories} (
-        repo_id int NOT NULL default '0',
+        repo_id int NOT NULL default 0,
         modules varchar(255) NOT NULL default '',
-        update_method smallint NOT NULL default '0',
-        updated int NOT NULL default '0',
+        update_method smallint NOT NULL default 0,
+        updated int NOT NULL default 0,
         run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_commits} (
-        commit_id int NOT NULL default '0',
-        branch_id int NOT NULL default '0',
+        commit_id int NOT NULL default 0,
+        branch_id int NOT NULL default 0,
         PRIMARY KEY (commit_id)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
-        item_revision_id int NOT NULL default '0',
-        commit_id int NOT NULL default '0',
-        action smallint NOT NULL default '0',
-        type smallint NOT NULL default '0',
+        item_revision_id int NOT NULL default 0,
+        commit_id int NOT NULL default 0,
+        action smallint NOT NULL default 0,
+        type smallint NOT NULL default 0,
         path varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
         source_revision varchar(255) NOT NULL default '',
-        lines_added smallint NOT NULL default '0',
-        lines_removed smallint NOT NULL default '0',
+        lines_added smallint NOT NULL default 0,
+        lines_removed smallint NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
         UNIQUE (commit_id, path)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
-        tag_op_id int NOT NULL default '0',
-        item_revision_id int NOT NULL default '0',
+        tag_op_id int NOT NULL default 0,
+        item_revision_id int NOT NULL default 0,
         PRIMARY KEY (tag_op_id, item_revision_id)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
-        branch_op_id int NOT NULL default '0',
-        item_revision_id int NOT NULL default '0',
+        branch_op_id int NOT NULL default 0,
+        item_revision_id int NOT NULL default 0,
         PRIMARY KEY (branch_op_id, item_revision_id)
       )");
       break;
@@ -139,43 +139,43 @@ function versioncontrol_cvs_uninstall() {
     $repo_ids = array();
     $repo_id_constraints = array();
     while ($repository = db_fetch_object($result)) {
-      $repo_id_constraints[] = "repo_id = '%d'";
+      $repo_id_constraints[] = 'repo_id = %d';
       $repo_ids[] = $repository->repo_id;
     }
 
     if (!empty($repo_ids)) {
       // Repository ids are not given for branch operations, so we need to
       // retrieve the branch ids in order to delete the branch ops.
-      $result = db_query("SELECT branch_id FROM {versioncontrol_branches}
-                          WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
+      $result = db_query('SELECT branch_id FROM {versioncontrol_branches}
+                          WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
       $branch_ids = array();
       $branch_id_constraints = array();
       while ($branch = db_fetch_object($result)) {
-        $branch_id_constraints[] = "branch_id = '%d'";
+        $branch_id_constraints[] = 'branch_id = %d';
         $branch_ids[] = $branch->branch_id;
       }
       if (!empty($branch_ids)) {
-        db_query("DELETE FROM {versioncontrol_branch_operations}
-                  WHERE ". implode(' OR ', $branch_id_constraints), $branch_ids);
+        db_query('DELETE FROM {versioncontrol_branch_operations}
+                  WHERE '. implode(' OR ', $branch_id_constraints), $branch_ids);
       }
       // The other ones can be deleted by specifying the repository ids.
-      db_query("DELETE FROM {versioncontrol_branches}
-                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
-      db_query("DELETE FROM {versioncontrol_tag_operations}
-                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
-      db_query("DELETE FROM {versioncontrol_commits}
-                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
-      db_query("DELETE FROM {versioncontrol_accounts}
-                WHERE ". implode(' OR ', $repo_id_constraints), $repo_ids);
+      db_query('DELETE FROM {versioncontrol_branches}
+                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
+      db_query('DELETE FROM {versioncontrol_tag_operations}
+                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
+      db_query('DELETE FROM {versioncontrol_commits}
+                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
+      db_query('DELETE FROM {versioncontrol_accounts}
+                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
     }
 
     db_query("DELETE FROM {versioncontrol_repositories} WHERE vcs = 'cvs'");
   }
 
-  db_query("DROP TABLE {versioncontrol_cvs_accounts}");
-  db_query("DROP TABLE {versioncontrol_cvs_repositories}");
-  db_query("DROP TABLE {versioncontrol_cvs_commits}");
-  db_query("DROP TABLE {versioncontrol_cvs_item_revisions}");
-  db_query("DROP TABLE {versioncontrol_cvs_item_tags}");
-  db_query("DROP TABLE {versioncontrol_cvs_item_branch_points}");
+  db_query('DROP TABLE {versioncontrol_cvs_accounts}');
+  db_query('DROP TABLE {versioncontrol_cvs_repositories}');
+  db_query('DROP TABLE {versioncontrol_cvs_commits}');
+  db_query('DROP TABLE {versioncontrol_cvs_item_revisions}');
+  db_query('DROP TABLE {versioncontrol_cvs_item_tags}');
+  db_query('DROP TABLE {versioncontrol_cvs_item_branch_points}');
 }

@@ -126,10 +126,10 @@ function versioncontrol_cvs_versioncontrol_backends() {
  */
 function versioncontrol_cvs_get_commit_actions($commit) {
   $actions = array();
-  $result = db_query("SELECT item_revision_id, action, type, path,
+  $result = db_query('SELECT item_revision_id, action, type, path,
                              revision, source_revision
                       FROM {versioncontrol_cvs_item_revisions}
-                      WHERE commit_id = '%d'", $commit['commit_id']);
+                      WHERE commit_id = %d', $commit['commit_id']);
 
   while ($item_revision = db_fetch_object($result)) {
     $action = array(
@@ -260,11 +260,11 @@ function versioncontrol_cvs_get_commit_branches($commit) {
  */
 function versioncontrol_cvs_get_branched_items($branch) {
   $items = array();
-  $result = db_query("SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
+  $result = db_query('SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
                       FROM {versioncontrol_cvs_item_branch_points} ib
                        INNER JOIN {versioncontrol_cvs_item_revisions} ir
                         ON ib.item_revision_id = ir.item_revision_id
-                      WHERE ib.branch_op_id = '%d'", $branch['branch_op_id']);
+                      WHERE ib.branch_op_id = %d', $branch['branch_op_id']);
 
   while ($item_revision = db_fetch_object($result)) {
     $items[] = array(
@@ -309,11 +309,11 @@ function versioncontrol_cvs_get_branched_items($branch) {
  */
 function versioncontrol_cvs_get_tagged_items($tag) {
   $items = array();
-  $result = db_query("SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
+  $result = db_query('SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
                       FROM {versioncontrol_cvs_item_tags} it
                        INNER JOIN {versioncontrol_cvs_item_revisions} ir
                         ON it.item_revision_id = ir.item_revision_id
-                      WHERE it.tag_op_id = '%d'", $tag['tag_op_id']);
+                      WHERE it.tag_op_id = %d', $tag['tag_op_id']);
 
   while ($item_revision = db_fetch_object($result)) {
     $items[] = array(
@@ -449,7 +449,7 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
           "INSERT INTO {versioncontrol_cvs_item_revisions}
            (item_revision_id, commit_id, type, path, revision,
             action, lines_added, lines_removed, source_revision)
-           VALUES ('%d', '%d', '%d', '%s', '%s', '%d', '%d', '%d', '%s')",
+           VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d, '%s')",
           $item_revision_id, $commit['commit_id'], $type, $path, $revision,
           $action['action'], $action['cvs_specific']['lines_added'],
           $action['cvs_specific']['lines_removed'], $source_revision
@@ -458,20 +458,20 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
       break;
 
     case 'delete':
-      $result = db_query("SELECT item_revision_id
+      $result = db_query('SELECT item_revision_id
                           FROM {versioncontrol_cvs_item_revisions}
-                          WHERE commit_id = '%d'", $commit['commit_id']);
+                          WHERE commit_id = %d', $commit['commit_id']);
 
       while ($revision = db_fetch_object($result)) {
-        db_query("DELETE FROM {versioncontrol_cvs_item_tags}
-                  WHERE item_revision_id = '%d'",
+        db_query('DELETE FROM {versioncontrol_cvs_item_tags}
+                  WHERE item_revision_id = %d',
                   $revision->item_revision_id);
-        db_query("DELETE FROM {versioncontrol_cvs_item_branch_points}
-                  WHERE item_revision_id = '%d'",
+        db_query('DELETE FROM {versioncontrol_cvs_item_branch_points}
+                  WHERE item_revision_id = %d',
                   $revision->item_revision_id);
       }
-      db_query("DELETE FROM {versioncontrol_cvs_item_revisions}
-                WHERE commit_id = '%d'", $commit['commit_id']);
+      db_query('DELETE FROM {versioncontrol_cvs_item_revisions}
+                WHERE commit_id = %d', $commit['commit_id']);
       break;
   }
 }
@@ -545,9 +545,9 @@ function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items
                             $item['path'], $item['revision']);
 
         while ($revision = db_fetch_object($result)) {
-          db_query("INSERT INTO {versioncontrol_cvs_". $table_name ."}
-                    (". $primary_key_name .", item_revision_id)
-                    VALUES ('%d', '%d')",
+          db_query('INSERT INTO {versioncontrol_cvs_'. $table_name .'}
+                    ('. $primary_key_name .', item_revision_id)
+                    VALUES (%d, %d)',
                     $branch_or_tag[$primary_key_name],
                     $revision->item_revision_id);
         }
@@ -555,8 +555,8 @@ function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items
       break;
 
     case 'delete':
-      db_query("DELETE FROM {versioncontrol_cvs_". $table_name ."}
-                WHERE ". $primary_key_name ." = '%d'",
+      db_query('DELETE FROM {versioncontrol_cvs_'. $table_name .'}
+                WHERE '. $primary_key_name .' = %d',
                 $branch_or_tag[$primary_key_name]);
       break;
   }
@@ -591,7 +591,7 @@ function versioncontrol_cvs_account($op, $uid, $username, $repository, $addition
       }
       db_query("INSERT INTO {versioncontrol_cvs_accounts}
                 (uid, repo_id, password)
-                VALUES ('%d', '%d', '%s')",
+                VALUES (%d, %d, '%s')",
                 $uid, $repository['repo_id'], $cvs_specific['password']);
       break;
 
@@ -601,7 +601,7 @@ function versioncontrol_cvs_account($op, $uid, $username, $repository, $addition
       }
       db_query("UPDATE {versioncontrol_cvs_accounts}
                 SET password = '%s'
-                WHERE uid = '%d' AND repo_id = '%d'",
+                WHERE uid = %d AND repo_id = %d",
                 $cvs_specific['password'], $uid, $repository['repo_id']);
 
       if (!user_access('administer version control systems')) {
@@ -611,8 +611,8 @@ function versioncontrol_cvs_account($op, $uid, $username, $repository, $addition
       break;
 
     case 'delete':
-      db_query("DELETE FROM {versioncontrol_cvs_accounts}
-                WHERE uid = '%d' AND repo_id = '%d'",
+      db_query('DELETE FROM {versioncontrol_cvs_accounts}
+                WHERE uid = %d AND repo_id = %d',
                 $uid, $repository['repo_id']);
       break;
   }
@@ -699,14 +699,14 @@ function versioncontrol_cvs_export_accounts($repository, $accounts) {
   foreach ($accounts as $uid => $usernames_per_repository) {
     foreach ($usernames_per_repository as $repo_id => $username) {
       $accounts_flat[$uid] = array('uid' => $uid, 'username' => $username);
-      $uid_constraints[] = "uid = '%d'";
+      $uid_constraints[] = 'uid = %d';
       $params[] = $uid;
     }
   }
 
-  $result = db_query("SELECT uid, password FROM {versioncontrol_cvs_accounts}
-                      WHERE repo_id = '%d'
-                       AND (". implode(' OR ', $uid_constraints) .")",
+  $result = db_query('SELECT uid, password FROM {versioncontrol_cvs_accounts}
+                      WHERE repo_id = %d
+                       AND ('. implode(' OR ', $uid_constraints) .')',
                       $params);
   while ($account = db_fetch_object($result)) {
     $accounts_flat[$account->uid]['password'] = $account->password;
