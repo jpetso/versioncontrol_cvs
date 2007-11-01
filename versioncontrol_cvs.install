@@ -67,7 +67,7 @@ function versioncontrol_cvs_install() {
       break;
 
     case 'pgsql':
-      db_query("CREATE TABLE {versioncontrol_accounts} (
+      db_query("CREATE TABLE {versioncontrol_cvs_accounts} (
         uid int NOT NULL default 0,
         repo_id int NOT NULL default 0,
         password varchar(64) NOT NULL default '',
