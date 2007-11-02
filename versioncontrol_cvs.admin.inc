@@ -34,13 +34,17 @@ function versioncontrol_cvs_form_alter($form_id, &$form) {
 function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
   $repository = $form['#repository'];
 
-  $form['repository_information']['root']['#description'] = t(
-    'The CVSROOT of this repository. Examples: /path or :pserver:user:password@server:/path.'
+  $form['versioncontrol_cvs'] = array(
+    '#type' => 'value',
+    '#value' => TRUE,
   );
-
-  $form['repository_information']['updated'] = array(
+  $form['updated'] = array(
     '#type' => 'value',
     '#value' => isset($repository) ? $repository['cvs_specific']['updated'] : 0,
+  );
+
+  $form['repository_information']['root']['#description'] = t(
+    'The CVSROOT of this repository. Examples: /path or :pserver:user:password@server:/path.'
   );
   $form['repository_information']['modules'] = array(
     '#type' => 'textfield',
@@ -92,6 +96,9 @@ function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
  * editing/adding form's submitted values.
  */
 function versioncontrol_cvs_versioncontrol_extract_repository_data($form_values) {
+  if (!isset($form_values['versioncontrol_cvs'])) {
+    return array();
+  }
   $modules = trim($form_values['modules']);
   $modules = empty($modules) ? array() : explode(' ', $modules);
 
@@ -161,6 +168,10 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
  * Add CVS specific elements to the edit/register user account form.
  */
 function versioncontrol_cvs_account_form_alter($form_id, &$form) {
+  $form['versioncontrol_cvs'] = array(
+    '#type' => 'value',
+    '#value' => TRUE,
+  );
   if (empty($form['original_username']['#value'])) { // creating the account
     $description = t('Choose a password to access the CVS repository with.');
   }
@@ -194,7 +205,7 @@ function versioncontrol_cvs_account_form_validate($form_id, $form_values) {
  * from the edit/register user account form's submitted values.
  */
 function versioncontrol_cvs_versioncontrol_extract_account_data($form_values) {
-  if (empty($form_values['account_password'])) {
+  if (!isset($form_values['versioncontrol_cvs']) || empty($form_values['account_password'])) {
     return array();
   }
   return array(

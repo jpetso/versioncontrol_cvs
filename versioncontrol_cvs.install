@@ -123,53 +123,14 @@ function versioncontrol_cvs_install() {
  * Implementation of hook_uninstall().
  */
 function versioncontrol_cvs_uninstall() {
-  // Make sure we can access the Version Control API functions.
-  if (function_exists('versioncontrol_delete_repository')) {
-    $repositories = versioncontrol_get_repositories(array('vcs' => array('cvs')));
-    foreach ($repositories as $repository) {
-      versioncontrol_delete_repository($repository);
-    }
-  }
-  else {
-    // We need to delete all commits for CVS repositories,
-    // but I don't think it's possible to join tables in DELETE statements,
-    // so fetch the repository ids separately.
-    $result = db_query("SELECT repo_id FROM {versioncontrol_repositories}
-                        WHERE vcs = 'cvs'");
-    $repo_ids = array();
-    $repo_id_constraints = array();
-    while ($repository = db_fetch_object($result)) {
-      $repo_id_constraints[] = 'repo_id = %d';
-      $repo_ids[] = $repository->repo_id;
-    }
+  // Make sure we can access the required functions even from the .install file.
+  include_once(drupal_get_path('module', 'versioncontrol') .'/versioncontrol.module');
+  include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.module');
 
-    if (!empty($repo_ids)) {
-      // Repository ids are not given for branch operations, so we need to
-      // retrieve the branch ids in order to delete the branch ops.
-      $result = db_query('SELECT branch_id FROM {versioncontrol_branches}
-                          WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
-      $branch_ids = array();
-      $branch_id_constraints = array();
-      while ($branch = db_fetch_object($result)) {
-        $branch_id_constraints[] = 'branch_id = %d';
-        $branch_ids[] = $branch->branch_id;
-      }
-      if (!empty($branch_ids)) {
-        db_query('DELETE FROM {versioncontrol_branch_operations}
-                  WHERE '. implode(' OR ', $branch_id_constraints), $branch_ids);
-      }
-      // The other ones can be deleted by specifying the repository ids.
-      db_query('DELETE FROM {versioncontrol_branches}
-                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
-      db_query('DELETE FROM {versioncontrol_tag_operations}
-                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
-      db_query('DELETE FROM {versioncontrol_commits}
-                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
-      db_query('DELETE FROM {versioncontrol_accounts}
-                WHERE '. implode(' OR ', $repo_id_constraints), $repo_ids);
-    }
-
-    db_query("DELETE FROM {versioncontrol_repositories} WHERE vcs = 'cvs'");
+  $result = db_query("SELECT repo_id FROM {versioncontrol_repositories}
+                      WHERE vcs = 'cvs'");
+  while ($repository = db_fetch_array($result)) {
+    versioncontrol_delete_repository($repository);
   }
 
   db_query('DROP TABLE {versioncontrol_cvs_accounts}');

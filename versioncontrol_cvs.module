@@ -13,7 +13,7 @@
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);
 define('VERSIONCONTROL_CVS_UPDATE_XCVS', 1);
 
-// The admin pages.
+// The admin and user edit pages.
 include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.admin.inc');
 
 /**
