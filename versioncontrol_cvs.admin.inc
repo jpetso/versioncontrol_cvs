@@ -172,6 +172,7 @@ function versioncontrol_cvs_account_form_alter($form_id, &$form) {
     '#type' => 'value',
     '#value' => TRUE,
   );
+
   if (empty($form['original_username']['#value'])) { // creating the account
     $description = t('Choose a password to access the CVS repository with.');
   }
