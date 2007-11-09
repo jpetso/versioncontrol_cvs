@@ -127,10 +127,12 @@ function versioncontrol_cvs_uninstall() {
   include_once(drupal_get_path('module', 'versioncontrol') .'/versioncontrol.module');
   include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.module');
 
-  $result = db_query("SELECT repo_id FROM {versioncontrol_repositories}
-                      WHERE vcs = 'cvs'");
-  while ($repository = db_fetch_array($result)) {
-    versioncontrol_delete_repository($repository);
+  if (db_table_exists('versioncontrol_repositories')) {
+    $result = db_query("SELECT repo_id FROM {versioncontrol_repositories}
+                        WHERE vcs = 'cvs'");
+    while ($repository = db_fetch_array($result)) {
+      versioncontrol_delete_repository($repository);
+    }
   }
 
   db_query('DROP TABLE {versioncontrol_cvs_accounts}');
