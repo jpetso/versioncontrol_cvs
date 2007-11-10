@@ -21,11 +21,9 @@ $xcvs['drupal_path'] = '/home/username/public_html';
 $xcvs['temp'] = "/tmp";
 
 // Drupal repository id that this installation of scripts is going to
-// interact with. If you only have one repository, leave this as '1'.
-// If you have multiple repositories installed via the cvs.module, you
-// can find the appropriate value at the "admin/cvs/repositories" page
-// on your site. Click on the "edit" link, and notice the final number
-// in the resulting URL.
+// interact with. In order to find out the repository id, go to the
+// "VCS repositories" administration page, then click on the "edit" link of
+// the concerned repository, and notice the final number in the resulting URL.
 $xcvs['repo_id'] = 1;
 
 
