@@ -120,111 +120,109 @@ function xcvs_init($argc, $argv) {
   // Check temporary file storage.
   $tempdir = xcvs_get_temp_directory($xcvs['temp']);
 
-  if ($xcvs['logs_combine']) {
-    // The commitinfo script wrote the lastlog file for us.
-    // Its only contents is the name of the last directory that commitinfo
-    // was invoked with, and that order is the same one as for loginfo.
-    $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
-    $summary = $tempdir .'/xcvs-summary.'. posix_getpgrp();
+  // The commitinfo script wrote the lastlog file for us.
+  // Its only contents is the name of the last directory that commitinfo
+  // was invoked with, and that order is the same one as for loginfo.
+  $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
+  $summary = $tempdir .'/xcvs-summary.'. posix_getpgrp();
 
-    // Write the changed items to a temporary log file, one by one.
-    if (!empty($argv)) {
-      if ($argv[0] == '- New directory') {
-        xcvs_log_add($summary, "$commitdir,dir\n", 'a');
-      }
-      else {
-        while (!empty($argv)) {
-          $filename = array_shift($argv);
-          $old = array_shift($argv);
-          $new = array_shift($argv);
-          xcvs_log_add($summary, "$commitdir/$filename,$old,$new\n", 'a');
-        }
+  // Write the changed items to a temporary log file, one by one.
+  if (!empty($argv)) {
+    if ($argv[0] == '- New directory') {
+      xcvs_log_add($summary, "$commitdir,dir\n", 'a');
+    }
+    else {
+      while (!empty($argv)) {
+        $filename = array_shift($argv);
+        $old = array_shift($argv);
+        $new = array_shift($argv);
+        xcvs_log_add($summary, "$commitdir/$filename,$old,$new\n", 'a');
       }
     }
+  }
 
-    // Once all logs in a multi-directory commit have been gathered,
-    // the currently processed directory matches the last processed directory
-    // that commitinfo was invoked with, which means we've got all the
-    // needed data in the summary file.
-    if (xcvs_is_last_directory($lastlog, $commitdir)) {
-      // Convert the previously written temporary log file
-      // to Version Control API's commit action format.
-      $fd = fopen($summary, "r");
-      if ($fd === FALSE) {
-        fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
-        xcvs_exit(5, $lastlog, $summary);
+  // Once all logs in a multi-directory commit have been gathered,
+  // the currently processed directory matches the last processed directory
+  // that commitinfo was invoked with, which means we've got all the
+  // needed data in the summary file.
+  if (xcvs_is_last_directory($lastlog, $commitdir)) {
+    // Convert the previously written temporary log file
+    // to Version Control API's commit action format.
+    $fd = fopen($summary, "r");
+    if ($fd === FALSE) {
+      fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
+      xcvs_exit(5, $lastlog, $summary);
+    }
+    $commit_actions = array();
+
+    // Do a full Drupal bootstrap. We need it from now on at the latest,
+    // starting with the action constants in xcvs_get_commit_action().
+    xcvs_bootstrap($xcvs['drupal_path']);
+
+    while (!feof($fd)) {
+      $file_entry = trim(fgets($fd));
+      list($path, $action) = xcvs_get_commit_action($file_entry);
+      if ($path) {
+        $commit_actions[$path] = $action;
       }
-      $commit_actions = array();
+    }
+    fclose($fd);
 
-      // Do a full Drupal bootstrap. We need it from now on at the latest,
-      // starting with the action constants in xcvs_get_commit_action().
-      xcvs_bootstrap($xcvs['drupal_path']);
+    // Integrate with the Drupal Version Control API.
+    if (!empty($commit_actions)) {
 
-      while (!feof($fd)) {
-        $file_entry = trim(fgets($fd));
-        list($path, $action) = xcvs_get_commit_action($file_entry);
-        if ($path) {
-          $commit_actions[$path] = $action;
+      // Find out how many lines have been added and removed for each file.
+      foreach ($commit_actions as $action_path => $action) {
+        if (!isset($action['current item'])) {
+          continue;
         }
-      }
-      fclose($fd);
 
-      // Integrate with the Drupal Version Control API.
-      if (!empty($commit_actions)) {
+        $current_rev = $action['current item']['revision'];
+        $trimmed_path = trim($action_path, '/');
+        exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $output_lines);
 
-        // Find out how many lines have been added and removed for each file.
-        foreach ($commit_actions as $path => $action) {
-          if (!isset($action['current item'])) {
-            continue;
+        $matches = array();
+        foreach ($output_lines as $line) {
+          // 'date: 2004/08/20 07:51:22;  author: dries;  state: Exp;  lines: +2 -2'
+          if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+).*$/', $line, $matches)) {
+            break;
           }
-
-          $current_rev = $action['current item']['revision'];
-          $trimmed_path = trim($path, '/');
-          exec("/usr/bin/cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $result_lines);
-
-          $matches = array();
-          foreach ($result_lines as $line) {
-            // 'date: 2004/08/20 07:51:22;  author: dries;  state: Exp;  lines: +2 -2'
-            if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+).*$/', $line, $matches)) {
-              break;
-            }
-          }
-          $commit_actions[$path]['cvs_specific'] = array(
-            'lines_added' => (int) $matches[1],
-            'lines_removed' => (int) $matches[2],
-          );
         }
-
-        // Get the remaining info from the commit log that we get from STDIN.
-        list($branch_name, $message) = xcvs_parse_log(STDIN);
-
-        $uid = versioncontrol_get_account_uid_for_username($xcvs['repo_id'], $username, TRUE);
-        if (!isset($uid)) {
-          $uid = 0;
-        }
-
-        // Get the branch id, and insert the branch into the database
-        // if it doesn't exist yet.
-        $branch_id = versioncontrol_ensure_branch($branch_name, $xcvs['repo_id']);
-
-        // Prepare the data for passing it to Version Control API.
-        $commit = array(
-          'repo_id' => $xcvs['repo_id'],
-          'date' => time(),
-          'uid' => $uid,
-          'username' => $username,
-          'message' => $message,
-          'revision' => '',
-          'cvs_specific' => array(
-            'branch_id' => $branch_id,
-          ),
+        $commit_actions[$action_path]['cvs_specific'] = array(
+          'lines_added' => (int) $matches[1],
+          'lines_removed' => (int) $matches[2],
         );
-        versioncontrol_insert_commit($commit, $commit_actions);
       }
 
-      // Clean up
-      xcvs_exit(0, $lastlog, $summary);
+      // Get the remaining info from the commit log that we get from STDIN.
+      list($branch_name, $message) = xcvs_parse_log(STDIN);
+
+      $uid = versioncontrol_get_account_uid_for_username($xcvs['repo_id'], $username, TRUE);
+      if (!isset($uid)) {
+        $uid = 0;
+      }
+
+      // Get the branch id, and insert the branch into the database
+      // if it doesn't exist yet.
+      $branch_id = versioncontrol_ensure_branch($branch_name, $xcvs['repo_id']);
+
+      // Prepare the data for passing it to Version Control API.
+      $commit = array(
+        'repo_id' => $xcvs['repo_id'],
+        'date' => time(),
+        'uid' => $uid,
+        'username' => $username,
+        'message' => $message,
+        'revision' => '',
+        'cvs_specific' => array(
+          'branch_id' => $branch_id,
+        ),
+      );
+      versioncontrol_insert_commit($commit, $commit_actions);
     }
+
+    // Clean up
+    xcvs_exit(0, $lastlog, $summary);
   }
   exit(0);
 }

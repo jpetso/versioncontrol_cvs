@@ -123,10 +123,8 @@ function xcvs_init($argc, $argv) {
 
   // Remember this directory so that loginfo can combine tags/branches
   // from different directories in one tag/branch entry.
-  if ($xcvs["logs_combine"]) {
-    $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
-    xcvs_log_add($lastlog, $dir);
-  }
+  $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
+  xcvs_log_add($lastlog, $dir);
 
   exit(0);
 }

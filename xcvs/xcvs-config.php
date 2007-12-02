@@ -31,9 +31,6 @@ $xcvs['repo_id'] = 1;
 // Optional customization
 // ------------------------------------------------------------
 
-// Combine the commit log messages for a multidir commit into one mail.
-$xcvs['logs_combine'] = TRUE;
-
 // These users are always allowed full access, even if we can't
 // connect to the DB. This optional list should contain the CVS
 // usernames (not the Drupal username if they're different).
