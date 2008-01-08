@@ -64,7 +64,7 @@ function xcvs_init($argc, $argv) {
   $dir = array_shift($argv);      // argv[6]
 
   // Do a full Drupal bootstrap.
-  xcvs_bootstrap($xcvs['drupal_path']);
+  xcvs_bootstrap($xcvs);
 
   // The commitinfo script wrote the lastlog file for us.
   // Its only contents is the name of the last directory that commitinfo

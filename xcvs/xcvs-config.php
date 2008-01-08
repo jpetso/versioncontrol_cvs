@@ -36,6 +36,10 @@ $xcvs['repo_id'] = 1;
 // usernames (not the Drupal username if they're different).
 $xcvs['allowed_users'] = array();
 
+// If you run a multisite installation, specify the directory
+// name that your settings.php file resides in (ex: www.example.com)
+// If you use the default settings.php file, leave this blank.
+$xcvs['multisite_directory'] = '';
 
 // ------------------------------------------------------------
 // Access control
@@ -55,18 +59,25 @@ EOF;
 // Shared code
 // ------------------------------------------------------------
 
-function xcvs_bootstrap($drupal_path) {
+function xcvs_bootstrap($xcvs) {
+
   // add $drupal_path to current value of the PHP include_path
-  set_include_path(get_include_path() . PATH_SEPARATOR . $drupal_path);
+  set_include_path(get_include_path() . PATH_SEPARATOR . $xcvs['drupal_path']);
 
   $current_directory = getcwd();
-  chdir($drupal_path);
+  chdir($xcvs['drupal_path']);
 
   // bootstrap Drupal so we can use drupal functions to access the databases, etc.
   if (!file_exists('./includes/bootstrap.inc')) {
     fwrite(STDERR, "Error: failed to load Drupal's bootstrap.inc file.\n");
     exit(1);
   }
+
+  // Set up the multisite directory if necessary.
+  if ($xcvs['multisite_directory']) {
+    $_SERVER['HTTP_HOST'] = $xcvs['multisite_directory'];
+  }
+
   require_once './includes/bootstrap.inc';
   drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
 
@@ -97,7 +108,3 @@ function xcvs_is_last_directory($logfile, $dir) {
   }
   return TRUE;
 }
-
-// $xcvs has to be made global so the xcvs-taginfo.php script works properly.
-global $xcvs_global;
-$xcvs_global = $xcvs;

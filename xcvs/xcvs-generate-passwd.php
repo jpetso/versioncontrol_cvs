@@ -44,7 +44,7 @@ function xcvs_init($argc, $argv) {
   include_once $config_file;
 
   // Do a full Drupal bootstrap.
-  xcvs_bootstrap($xcvs['drupal_path']);
+  xcvs_bootstrap($xcvs);
 
   $repository = versioncontrol_get_repository($xcvs['repo_id']);
   if (!isset($repository)) {

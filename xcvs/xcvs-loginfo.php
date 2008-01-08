@@ -157,7 +157,7 @@ function xcvs_init($argc, $argv) {
 
     // Do a full Drupal bootstrap. We need it from now on at the latest,
     // starting with the action constants in xcvs_get_commit_action().
-    xcvs_bootstrap($xcvs['drupal_path']);
+    xcvs_bootstrap($xcvs);
 
     while (!feof($fd)) {
       $file_entry = trim(fgets($fd));
