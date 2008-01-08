@@ -4,7 +4,7 @@
  * @file
  * Configuration variables and bootstrapping code for all CVS hook scripts.
  *
- * Copyright 2005 by Kjartan ("Kjartan", http://drupal.org/user/2)
+ * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Adam Light ("aclight", http://drupal.org/user/86358)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
