@@ -76,6 +76,9 @@ function xcvs_bootstrap($xcvs) {
   // Set up the multisite directory if necessary.
   if ($xcvs['multisite_directory']) {
     $_SERVER['HTTP_HOST'] = $xcvs['multisite_directory'];
+    // Set a dummy script name, so the multisite configuration
+    // file search will always trigger.
+    $_SERVER['SCRIPT_NAME'] = '/foo';
   }
 
   require_once './includes/bootstrap.inc';
