@@ -129,13 +129,17 @@ function versioncontrol_cvs_versioncontrol_backends() {
 function versioncontrol_cvs_get_commit_actions($commit) {
   $actions = array();
   $result = db_query('SELECT item_revision_id, action, type, path,
-                             revision, source_revision
+                             revision, lines_added, lines_removed, source_revision
                       FROM {versioncontrol_cvs_item_revisions}
                       WHERE commit_id = %d', $commit['commit_id']);
 
   while ($item_revision = db_fetch_object($result)) {
     $action = array(
       'action' => $item_revision->action,
+      'cvs_specific' => array(
+        'lines_added' => $item_revision->lines_added,
+        'lines_removed' => $item_revision->lines_removed,
+      ),
     );
 
     if ($item_revision->action != VERSIONCONTROL_ACTION_DELETED) {
@@ -167,6 +171,55 @@ function versioncontrol_cvs_get_commit_actions($commit) {
   }
 
   return $actions;
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_commit_statistics():
+ * Retrieve general statistics about what happened in a single commit. For more granular
+ * details about what happened in a single commit, use versioncontrol_get_commit_actions.
+ *
+ * @param $commit
+ *   The commit to retrieve statistics about
+ *
+ * @return
+ *  A structured array containing general statistics about this commit. The array will consist
+ *  of elements with the following keys:
+ *
+ *   - 'lines_added': Total number of lines added during this commit
+ *   - 'lines_removed': Total number of lines removed during this commit
+ *   - 'action_count': Total number of actions within this commit
+ *   - 'per_action_statistics': An array containing statistics on individual actions. Array keys are
+ *        the current/new paths (just as with versioncontrol_get_commit_actions). The corresponding
+ *        array values are again structured arrays and consist of elements with the following keys:
+ *   
+ *   - 'lines_added': Number of lines added in this action
+ *   - 'lines_removed': Number of lines removed in this action
+ */
+function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NULL) {
+  if ($commit_actions == NULL) {
+    $commit_actions = versioncontrol_cvs_get_commit_actions($commit);
+  }
+  
+  $total_lines_added = 0;
+  $total_lines_removed = 0;
+  $per_action = array();
+  
+  foreach ($commit_actions as $path => $action) {
+    $per_action[$path] = array();
+    
+    $per_action[$path]['lines_added'] = $action['cvs_specific']['lines_added'];
+    $total_lines_added += $per_action[$path]['lines_added'];
+    
+    $per_action[$path]['lines_removed'] = $action['cvs_specific']['lines_removed'];
+    $total_lines_removed += $action['cvs_specific']['lines_removed'];
+  }
+  
+  return array(
+    'lines_added' => $total_lines_added,
+    'lines_removed' => $total_lines_removed,
+    'action_count' => count($per_action),
+    'per_action_statistics' => $per_action,
+  );
 }
 
 /**
