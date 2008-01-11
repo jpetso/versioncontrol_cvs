@@ -35,7 +35,7 @@ function cvs_to_versioncontrol_cvs_update_1() {
     $diff = str_replace(array('%file', '%old', '%revision'), array('%path', '%old-revision', '%new-revision'), $repo->diffurl);
     db_query("INSERT INTO {versioncontrol_repository_urls} (repo_id, commit_view, file_log_view, file_view, directory_view, diff, tracker) VALUES (%d, '%s', '%s', '%s', '%s', '%s', '%s')", $repo->rid, '', '', $file_view, '', $diff, $repo->trackerurl);
     db_query("INSERT INTO {versioncontrol_account_status_strings} (repo_id, default_condition_description, default_condition_error, motivation_description, user_notification_email, admin_notification_email, approved_email, pending_email, declined_email, disabled_email) VALUES (%d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')", $repo->rid, '', '', '', '', '', '', '', '', '');
-    db_query("INSERT INTO {versioncontrol_account_status_strings} (repo_id, modules, update_method, updated, run_as_user) VALUES (%d, '%s', %d, %d, '%s')", $repo->rid, serialize(explode(' ', $repo->modules)), $repo->method, $repo->updated, serialize('drupal-cvs'));
+    db_query("INSERT INTO {versioncontrol_cvs_repositories} (repo_id, modules, update_method, updated, run_as_user) VALUES (%d, '%s', %d, %d, '%s')", $repo->rid, serialize(explode(' ', $repo->modules)), $repo->method, $repo->updated, serialize('drupal-cvs'));
     $count++;
   }
 
@@ -49,13 +49,12 @@ function cvs_to_versioncontrol_cvs_update_2() {
 
   // This determines how many users will be processed in each batch run. A reasonable
   // default has been chosen, but you may want to tweak depending on your setup.
-  $limit = 25;
+  $limit = 200;
 
   // Multi-part update
   if (!isset($_SESSION['cvs_to_versioncontrol_cvs_update_2'])) {
     $_SESSION['cvs_to_versioncontrol_cvs_update_2'] = 0;
-    $_SESSION['cvs_to_versioncontrol_cvs_update_2_max'] = db_result(db_query("SELECT COUNT(*) FROM {cvs_project_maintainers}"));
-    $count = 0;
+    $_SESSION['cvs_to_versioncontrol_cvs_update_2_max'] = db_result(db_query("SELECT COUNT(*) FROM {cvs_accounts} WHERE cvs_user <> '' AND uid <> 0"));
   }
 
   $default_repo = $_SESSION['cvs_to_versioncontrol_cvs_update_default_repo'];
@@ -70,7 +69,7 @@ function cvs_to_versioncontrol_cvs_update_2() {
   );
 
   // Pull the next batch of users.
-  $cvs_accounts = db_query_range("SELECT * FROM {cvs_accounts} ORDER BY cvs_user", $_SESSION['cvs_to_versioncontrol_cvs_update_2'], $limit);
+  $cvs_accounts = db_query_range("SELECT * FROM {cvs_accounts} WHERE cvs_user <> '' AND uid <> 0 ORDER BY cvs_user", $_SESSION['cvs_to_versioncontrol_cvs_update_2'], $limit);
 
   // Loop through each co-maintainer.
   while ($cvs_account = db_fetch_object($cvs_accounts)) {
@@ -85,14 +84,15 @@ function cvs_to_versioncontrol_cvs_update_2() {
     if (empty($repos) && $default_repo) {
       $repos[] = $default_repo;
     }
-    if (!empty($repos)) {
-      $count++;
-    }
     // Add a CVS user for each repo.
     foreach ($repos as $repo) {
-      db_query("INSERT INTO {versioncontrol_account_status_users} (uid, repo_id, motivation, status) VALUES (%d, %d, '%s', %d)", $cvs_account->uid, $repo, $cvs_account->motivation, $status_map[$cvs_account->status]);
-      db_query("INSERT INTO {versioncontrol_accounts} (uid, repo_id, username) VALUES (%d, %d, '%s')", $cvs_account->uid, $repo, $cvs_account->cvs_user);
-      db_query("INSERT INTO {versioncontrol_cvs_accounts} (uid, repo_id, password) VALUES (%d, %d, '%s')", $cvs_account->uid, $repo, $cvs_account->pass);
+      // This check is necessary because Version Control only allows one user account
+      // per Drupal user per repository, but CVS module did not have this restriction.
+      if (!db_result(db_query("SELECT uid FROM {versioncontrol_accounts} WHERE uid = %d AND repo_id = %d", $cvs_account->uid, $repo))) {
+        db_query("INSERT INTO {versioncontrol_accounts} (uid, repo_id, username) VALUES (%d, %d, '%s')", $cvs_account->uid, $repo, $cvs_account->cvs_user);
+        db_query("INSERT INTO {versioncontrol_cvs_accounts} (uid, repo_id, password) VALUES (%d, %d, '%s')", $cvs_account->uid, $repo, $cvs_account->pass);
+        db_query("INSERT INTO {versioncontrol_account_status_users} (uid, repo_id, motivation, status) VALUES (%d, %d, '%s', %d)", $cvs_account->uid, $repo, $cvs_account->motivation, $status_map[$cvs_account->status]);
+      }
     }
 
     $_SESSION['cvs_to_versioncontrol_cvs_update_2']++;
@@ -100,10 +100,11 @@ function cvs_to_versioncontrol_cvs_update_2() {
   }
 
   if ($_SESSION['cvs_to_versioncontrol_cvs_update_2'] >= $_SESSION['cvs_to_versioncontrol_cvs_update_2_max']) {
+    $count = $_SESSION['cvs_to_versioncontrol_cvs_update_2_max'];
     unset($_SESSION['cvs_to_versioncontrol_cvs_update_2']);
     unset($_SESSION['cvs_to_versioncontrol_cvs_update_2_max']);
     unset($_SESSION['cvs_to_versioncontrol_cvs_update_default_repo']);
-    return array(array('success' => TRUE, 'query' => t('Converted @count project co-maintainer entries.', array('@count' => $count))));
+    return array(array('success' => TRUE, 'query' => t('Converted @count CVS user entries.', array('@count' => $count))));
   }
   return array('#finished' => $_SESSION['cvs_to_versioncontrol_cvs_update_2'] / $_SESSION['cvs_to_versioncontrol_cvs_update_2_max']);
 }
@@ -302,7 +303,7 @@ function update_progress_page_nojs() {
   }
   else {
     // Abort the update if the necessary modules aren't installed.
-    if (!module_exists('versioncontrol') || !module_exists('versioncontrol_cvs')) {
+    if (!module_exists('versioncontrol') || !module_exists('versioncontrol_cvs') || !module_exists('cvs')) {
       print update_finished_page(FALSE);
       return NULL;
     }
@@ -333,7 +334,7 @@ function update_finished_page($success) {
   }
   else {
     $output = '<p class="error">The update process was aborted prematurely. All other errors have been <a href="index.php?q=admin/logs/watchdog">logged</a>. You may need to check the <code>watchdog</code> database table manually.</p>';
-    $output .= '<p class="error">This has most likely occurred because the Version Control/CVS module is not <a href=\"index.php?q=admin/build/modules\">properly installed</a>.</p>';
+    $output .= '<p class="error">This has most likely occurred because the Version Control/CVS module or the old CVS module is not <a href="index.php?q=admin/build/modules">properly installed</a>.</p>';
   }
 
   $output .= theme('item_list', $links);
@@ -376,6 +377,12 @@ function update_info_page() {
   $output .= "<li>Make sure the Version Control/CVS module is <a href=\"index.php?q=admin/build/modules\">properly installed</a>.</li>\n";
   $output .= "<li>Make sure this file is placed in the root of your Drupal installation (the same directory that index.php is in) and <a href=\"cvs_to_versioncontrol_cvs_update.php?op=selection\">run the database upgrade script</a>. Don't upgrade your database twice as it may cause problems.</li>\n";
   $output .= "</ol>";
+  $output .= "<h2>Caveats</h2>\n";
+  $output .= "<ul>\n";
+  $output .= "<li>Version Control API only allows one CVS user per Drupal user account for each repository, so only the first CVS user account will be migrated if there are duplicates</li>\n";
+  $output .= "<li>The anonymous user (uid 0) will not be migrated.</li>\n";
+  $output .= "<li>The script may not accurately translate the URL information for CVS web links.</li>\n";
+  $output .= "</ul>\n";
   return $output;
 }
 
