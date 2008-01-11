@@ -420,6 +420,15 @@ function update_finished_page($success) {
 
   $output .= theme('item_list', $links);
 
+  if ($success) {
+    $output .= "<h4>Some things to take care of now:</h4>\n";
+    $output .= "<ul>\n";
+    $output .= "<li>Visit the <a href=\"index.php?q=admin/project/versioncontrol-repositories\">Version Control repository administration page</a>, click 'Edit' for each of your repositories, and check the settings -- the script may not have migrated them all correctly, and there are also new settings that weren't supported in the CVS module.</li>\n";
+    $output .= "<li>Visit the <a href=\"index.php?q=admin/project/versioncontrol-settings\">Version control settings page</a>, and make any necessary adjustments.</li>\n";
+    $output .= "<li>If you're all done with the old CVS module, <a href=\"index.php?q=admin/build/modules\">disable/uninstall it</a>.</li>\n";
+    $output .= "</ul>\n";
+  }
+
   // Output a list of queries executed
   if (!empty($_SESSION['update_results'])) {
     $output .= '<div id="update-results">';
@@ -455,8 +464,8 @@ function update_info_page() {
   $output = "<ol>\n";
   $output .= "<li>Use this script to <strong>upgrade an existing CVS module installation to the Version Control/CVS module</strong>. You don't need this script when installing Version Control/CVS from scratch.</li>";
   $output .= "<li>Before doing anything, backup your database. This process will change your database and its values.</li>\n";
-  $output .= "<li>Make sure the Version Control/CVS module is <a href=\"index.php?q=admin/build/modules\">properly installed</a>.</li>\n";
-  $output .= "<li>Make sure this file is placed in the root of your Drupal installation (the same directory that index.php is in) and <a href=\"cvs_to_versioncontrol_cvs_update.php?op=selection\">run the database upgrade script</a>. Don't upgrade your database twice as it may cause problems.</li>\n";
+  $output .= "<li>Make sure the Version Control/CVS module and the old CVS module are <a href=\"index.php?q=admin/build/modules\">properly installed</a>.</li>\n";
+  $output .= "<li>Make sure this file is placed in the root of your Drupal installation (the same directory that index.php is in) and <a href=\"cvs_to_versioncontrol_cvs_update.php?op=selection\">run the database upgrade script</a>. <strong>Don't upgrade your database twice as it will cause problems!</strong></li>\n";
   $output .= "</ol>";
   $output .= "<h2>Caveats</h2>\n";
   $output .= "<ul>\n";
