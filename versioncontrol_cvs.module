@@ -5,11 +5,10 @@
  * CVS backend for Version Control API - Provides CVS commit information and
  * account management as a pluggable backend.
  *
- * Copyright 2005 by Kjartan ("Kjartan", http://drupal.org/user/2)
+ * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
-// TODO: Port log parsing from cvs.module.
 
 // Update methods.
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);
@@ -80,6 +79,26 @@ function versioncontrol_cvs_versioncontrol_backends() {
       ),
     ),
   );
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function versioncontrol_cvs_menu($may_cache) {
+  global $user;
+  $items = array();
+  $admin_access = user_access('administer version control systems');
+
+  if ($may_cache) {
+    $items[] = array(
+      'path' => 'admin/project/versioncontrol-repositories/update/cvs',
+      'title' => t('Fetch log'),
+      'callback' => 'versioncontrol_cvs_update_repository_callback',
+      'access' => $admin_access,
+      'type' => MENU_CALLBACK,
+    );
+  }
+  return $items;
 }
 
 
@@ -777,4 +796,82 @@ function versioncontrol_cvs_export_accounts($repository, $accounts) {
     $data .= $account['username'] .':'. $account['password'] . $run_as_user ."\n\n";
   }
   return $data;
+}
+
+
+/**
+ * Menu callback for 'admin/project/versioncontrol-repositories/update/cvs'
+ * (expecting a $repo_id as one more path argument):
+ * Retrieve/validate the specified repository, fetch new commits, tags
+ * and branches by invoking the cvs executable, output messages and
+ * redirect back to the repository page.
+ */
+function versioncontrol_cvs_update_repository_callback($repo_id) {
+  if (is_numeric($repo_id)) {
+    $repository = versioncontrol_get_repository($repo_id);
+
+    if (isset($repository)) {
+      $update_method = $repository['cvs_specific']['update_method'];
+    }
+  }
+  if (isset($update_method) && $update_method == VERSIONCONTROL_CVS_UPDATE_CRON) {
+    // Set timeout limit to 3600 seconds as it can take a long time
+    // to process the log initially.
+    if (!ini_get('safe_mode')) {
+      set_time_limit(3600);
+    }
+    if (_versioncontrol_cvs_update_repository($repository)) {
+      drupal_set_message(t('Fetched new log entries.'));
+    }
+  }
+  else { // $repo_id is not a number or doesn't correlate to any repository.
+    drupal_set_message(t('No such repository, did not fetch anything.'));
+  }
+  drupal_goto('admin/project/versioncontrol-repositories');
+}
+
+/**
+ * Actually update the repository by fetching commits and other stuff
+ * directly from the repository, invoking the cvs executable.
+ *
+ * @return
+ *   TRUE if the logs were updated, or FALSE if fetching and updating the logs
+ *   failed for whatever reason.
+ */
+function _versioncontrol_cvs_update_repository(&$repository) {
+  include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.log.inc');
+  return _versioncontrol_cvs_log_update_repository($repository);
+}
+
+/**
+ * Calculate the previous revision number of file under version control,
+ * given the current revision. This can be done in a purely programmatical way
+ * because of the quite special numbering scheme of CVS (so no database queries
+ * need to be done in order to get the result).
+ *
+ * @return
+ *   The previous revision number (e.g. "1.1" for a given "1.2",
+ *   or "1.3" for a given "1.3.2.1"), or NULL if $current_revision is "1.1"
+ *   (which obviously means that there is no previous revision number).
+ */
+function versioncontrol_cvs_get_previous_revision_number($current_revision) {
+  if ($current_revision == '1.1') {
+    return NULL;
+  }
+  $parts = explode('.', $current_revision);
+  $last_part = array_pop($parts);
+
+  // For the first commit to a new branch, cut off the two rightmost parts
+  // in order to get the previous revision number. (e.g. "1.3.4.1" is the
+  // first commit on branch 1.3.0.4 which originated in "1.3" from HEAD.)
+  if ($last_part == '1') {
+    array_pop($parts); // e.g., removes the "2" from the example above
+    return implode('.', $parts);
+  }
+
+  // If we don't have a "1" as last part, we can just decrease this by one
+  // and implode it again to get the previous revision.
+  $last_part = ((int) $last_part) - 1;
+  $parts[] = (string) $last_part;
+  return implode('.', $parts);
 }
