@@ -189,18 +189,13 @@ function xcvs_init($argc, $argv) {
           }
         }
         $commit_actions[$action_path]['cvs_specific'] = array(
-          'lines_added' => (int) $matches[1],
-          'lines_removed' => (int) $matches[2],
+          'lines_added' => empty($matches) ? 0 : (int) $matches[1],
+          'lines_removed' => empty($matches) ? 0 : (int) $matches[2],
         );
       }
 
       // Get the remaining info from the commit log that we get from STDIN.
       list($branch_name, $message) = xcvs_parse_log(STDIN);
-
-      $uid = versioncontrol_get_account_uid_for_username($xcvs['repo_id'], $username, TRUE);
-      if (!isset($uid)) {
-        $uid = 0;
-      }
 
       // Get the branch id, and insert the branch into the database
       // if it doesn't exist yet.
@@ -210,7 +205,6 @@ function xcvs_init($argc, $argv) {
       $commit = array(
         'repo_id' => $xcvs['repo_id'],
         'date' => time(),
-        'uid' => $uid,
         'username' => $username,
         'message' => $message,
         'revision' => '',
