@@ -463,6 +463,7 @@ function update_info_page() {
   $output .= "<li>Version Control API only allows one CVS user per Drupal user account for each repository, so only the first CVS user account will be migrated if there are duplicates</li>\n";
   $output .= "<li>The anonymous user (uid 0) will not be migrated.</li>\n";
   $output .= "<li>The script may not accurately translate the URL information for CVS web links.</li>\n";
+  $output .= "<li>For purposes of generating CVSROOT/passwd, the 'run as user' will be 'drupal-cvs' -- to change the user, manually edit the value in <code>function cvs_to_versioncontrol_cvs_update_1()</code></li>\n";
   $output .= "</ul>\n";
   return $output;
 }
