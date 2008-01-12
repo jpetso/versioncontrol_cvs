@@ -474,6 +474,7 @@ function update_info_page() {
   $output .= "<li>The script may not accurately translate the URL information for CVS web links.</li>\n";
   $output .= "<li>For purposes of generating CVSROOT/passwd, the 'run as user' will be 'drupal-cvs' -- to change the user, manually edit the value in <code>function cvs_to_versioncontrol_cvs_update_1()</code></li>\n";
   $output .= "<li>While Version Control API has support for recording deletion of files, the CVS module does not -- only file addition and modification data will be migrated.</li>\n";
+  $output .= "<li>While Version Control API has support for recording metadata about branching and tagging operations, CVS module does not -- no data will be migrated in this sense.</li>\n";
   $output .= "</ul>\n";
   return $output;
 }
