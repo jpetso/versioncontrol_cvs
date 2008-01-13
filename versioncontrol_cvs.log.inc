@@ -13,9 +13,7 @@
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 // TODO: Make sure we don't insert the same revision twice.
-// TODO: We can retrieve branch points just by looking at the (finished)
-//       database table, and maybe even tag operations are possible 
-//       to determine with that "symbolic names:" line.
+// TODO: hook_cron()
 
 /**
  * Actually update the repository by fetching commits and other stuff
