@@ -46,7 +46,6 @@ function versioncontrol_cvs_install() {
         type tinyint NOT NULL default 0,
         path varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
-        source_revision varchar(255) NOT NULL default '',
         lines_added smallint unsigned NOT NULL default 0,
         lines_removed smallint unsigned NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
@@ -96,7 +95,6 @@ function versioncontrol_cvs_install() {
         type smallint NOT NULL default 0,
         path varchar(255) NOT NULL default '',
         revision varchar(255) NOT NULL default '',
-        source_revision varchar(255) NOT NULL default '',
         lines_added smallint NOT NULL default 0,
         lines_removed smallint NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
@@ -141,4 +139,41 @@ function versioncontrol_cvs_uninstall() {
   db_query('DROP TABLE {versioncontrol_cvs_item_revisions}');
   db_query('DROP TABLE {versioncontrol_cvs_item_tags}');
   db_query('DROP TABLE {versioncontrol_cvs_item_branch_points}');
+}
+
+
+// Update functions.
+
+/**
+ * Update 1: Remove the source_revision column from the files table,
+ *   because we can retrieve it programmatically.
+ */
+function versioncontrol_cvs_update_1() {
+  $ret = array();
+  
+  $result = db_query('SELECT item_revision_id, source_revision
+                      FROM {versioncontrol_cvs_item_revisions}
+                      WHERE action = 5'); // 5 == VERSIONCONTROL_ACTION_DELETED
+
+  while ($item_revision = db_fetch_object($result)) {
+    // Calculate the revision number that follows the source revision,
+    // as that is the current (dead) one and that is being stored now.
+    $source_revision = $item_revision->source_revision;
+    $parts = explode('.', $source_revision);
+    $last_part = array_pop($parts);
+    $last_part = ((int) $last_part) + 1;
+    $parts[] = (string) $last_part;
+    $revision = implode('.', $parts);
+    
+    // Ok, that's it, now store it back (but in the 'revision' field).
+    // "type = 2" is for VERSIONCONTROL_ITEM_FILE_DELETED.
+    $ret[] = update_sql("UPDATE {versioncontrol_cvs_item_revisions}
+                         SET revision = '$revision', type = 2
+                         WHERE item_revision_id = ". $item_revision->item_revision_id);
+  }
+
+  // Now the easy part: deleting the source_revision column
+  $ret[] = update_sql('ALTER TABLE {versioncontrol_cvs_item_revisions}
+                       DROP COLUMN source_revision');
+  return $ret;
 }

@@ -148,7 +148,7 @@ function versioncontrol_cvs_menu($may_cache) {
 function versioncontrol_cvs_get_commit_actions($commit) {
   $actions = array();
   $result = db_query('SELECT item_revision_id, action, type, path,
-                             revision, lines_added, lines_removed, source_revision
+                             revision, lines_added, lines_removed
                       FROM {versioncontrol_cvs_item_revisions}
                       WHERE commit_id = %d', $commit['commit_id']);
 
@@ -174,10 +174,11 @@ function versioncontrol_cvs_get_commit_actions($commit) {
       );
     }
     if ($item_revision->action != VERSIONCONTROL_ACTION_ADDED) {
+      $source_revision = versioncontrol_cvs_get_previous_revision_number($item_revision->revision);
       $action['source items'] = array(array(
         'type' => $item_revision->type,
         'path' => $item_revision->path,
-        'revision' => $item_revision->source_revision,
+        'revision' => isset($source_revision) ? $source_revision : '',
         'cvs_specific' => array(
           'item_revision_id' => $item_revision->item_revision_id,
           'selected_branch_id' => $commit['cvs_specific']['branch_id'],
@@ -506,27 +507,35 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
     case 'insert':
       foreach ($commit_actions as $path => $action) {
         $revision = '';
-        $source_revision = '';
 
         // If available, get item type and revision from the contained items.
         if (isset($action['current item'])) {
           $type = $action['current item']['type'];
           $revision = $action['current item']['revision'];
         }
-        if (isset($action['source items'])) {
-          $type = $action['source items'][0]['type']; // only one source item for CVS
+        else { // no current item -> file has been deleted
+          $type = VERSIONCONTROL_ITEM_FILE_DELETED;
+
+          // Calculate the current revision from the (only, in CVS) source item
+          // by simply increasing the last identifier part by 1.
+          // (That's how CVS does it as well.)
           $source_revision = $action['source items'][0]['revision'];
+          $parts = explode('.', $source_revision);
+          $last_part = array_pop($parts);
+          $last_part = ((int) $last_part) + 1;
+          $parts[] = (string) $last_part;
+          $revision = implode('.', $parts);
         }
 
         $item_revision_id = db_next_id('{versioncontrol_cvs_item_revisions}_item_revision_id');
         db_query(
           "INSERT INTO {versioncontrol_cvs_item_revisions}
            (item_revision_id, commit_id, type, path, revision,
-            action, lines_added, lines_removed, source_revision)
-           VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d, '%s')",
+            action, lines_added, lines_removed)
+           VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d)",
           $item_revision_id, $commit['commit_id'], $type, $path, $revision,
           $action['action'], $action['cvs_specific']['lines_added'],
-          $action['cvs_specific']['lines_removed'], $source_revision
+          $action['cvs_specific']['lines_removed']
         );
       }
       break;
@@ -855,7 +864,7 @@ function _versioncontrol_cvs_update_repository(&$repository) {
  *   (which obviously means that there is no previous revision number).
  */
 function versioncontrol_cvs_get_previous_revision_number($current_revision) {
-  if ($current_revision == '1.1') {
+  if ($current_revision === '1.1') {
     return NULL;
   }
   $parts = explode('.', $current_revision);
@@ -864,7 +873,7 @@ function versioncontrol_cvs_get_previous_revision_number($current_revision) {
   // For the first commit to a new branch, cut off the two rightmost parts
   // in order to get the previous revision number. (e.g. "1.3.4.1" is the
   // first commit on branch 1.3.0.4 which originated in "1.3" from HEAD.)
-  if ($last_part == '1') {
+  if ($last_part === '1') {
     array_pop($parts); // e.g., removes the "2" from the example above
     return implode('.', $parts);
   }

@@ -178,7 +178,8 @@ function xcvs_init($argc, $argv) {
         }
 
         $current_rev = $action['current item']['revision'];
-        $trimmed_path = trim($action_path, '/');
+        $trimmed_path = trim($action['current item']['path'], '/');
+        unset($output_lines);
         exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $output_lines);
 
         $matches = array();
