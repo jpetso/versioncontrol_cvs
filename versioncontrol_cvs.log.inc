@@ -12,6 +12,10 @@
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
+// TODO: Make sure we don't insert the same revision twice.
+// TODO: We can retrieve branch points just by looking at the (finished)
+//       database table, and maybe even tag operations are possible 
+//       to determine with that "symbolic names:" line.
 
 /**
  * Actually update the repository by fetching commits and other stuff
@@ -138,14 +142,14 @@ function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
   $root_path = preg_replace('|[^/]*(/.+)$|', '\1', $repository['root']);
 
   while (($line = $next($logs)) !== FALSE) {
-    $matches_found = preg_match('/^RCS file: (.*)$/', $line, $matches);
+    $matches_found = preg_match('/^RCS file: (.+)$/', $line, $matches);
     if (!$matches_found) {
       continue;
     }
     $file = new stdClass();
 
     // Remove the root path and the trailing ",v".
-    $file->path = trim(preg_replace("@^$root_path(.*)(,v)?$@", '\1', $matches[1]));
+    $file->path = trim(preg_replace("@^$root_path(.*)(,v)$@", '\1', $matches[1]));
     // Remove a possible "Attic/" directory that exists if the file
     // is currently in a "dead" state.
     $file->path = preg_replace('@^(.*/)Attic/(.*)$@', '\1\2', $file->path);
@@ -217,7 +221,7 @@ function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
       // "lines: (...)" from the above example line only appears
       // for revisions other than 1.1.
       $lines = array();
-      if ($file_revision->revision != '1.1') {
+      if ($file_revision->revision !== '1.1' && $file_revision->dead == FALSE) {
         $lines = explode(' ', _versioncontrol_cvs_explode($parts[3]));
       }
       $file_revision->lines_added = empty($lines) ? 0 : abs($lines[0]);
@@ -234,12 +238,13 @@ function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
       $line = $next($logs);
       $message = '';
 
-      if (substr($temp, 0, 9) != 'branches:') {
-        $message = "$line\n";
+      if (substr($line, 0, 9) != 'branches:') {
+        // Not sure if $next() always includes linebreaks or not -> trim.
+        $message = trim($line) ."\n";
       }
 
       // After that, we have either more message lines or the end of the message.
-      while (($line = $next($logs)) != $sep && trim($line) != "=============================================================================") {
+      while (($line = $next($logs)) != $separator && trim($line) != "=============================================================================") {
         $message .= "$line\n";
       }
       $file_revision->message = trim($message);
@@ -247,7 +252,7 @@ function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
       // Retrieve the branch of this revision.
       $parts = explode('.', $file_revision->revision);
 
-      if (empty($file->branches) || count($parts) <= 2 /* HEAD */) {
+      if (empty($file->branches) || count($parts) <= 2) {
         $file_revision->branch = 'HEAD';
       }
       else {
@@ -313,7 +318,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
       unset($commit_action['current item']);
     }
     else {
-      if ($file_revision->revision == '1.1') {
+      if ($file_revision->revision === '1.1') {
         $commit_action['action'] = VERSIONCONTROL_ACTION_ADDED;
         unset($commit_action['source items']);
       }
@@ -336,7 +341,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
 
   // Part one: revisions with commitid - these are cool & easy.
   foreach ($commit_actions_by_commitid as $commitid => $commit_actions) {
-    _versioncontrol_cvs_log_construct_commit($commits, $commit_actions);
+    _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, $commits);
   }
 
   // Part two: revisions without commitid - need to apply heuristics
@@ -352,7 +357,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
         $commit_actions = _versioncontrol_cvs_log_group_actions(
           $commit_actions_by_date, $reference_action
         );
-        _versioncontrol_cvs_log_construct_commit($commits, $commit_actions);
+        _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, $commits);
       }
       unset($commit_actions_by_date[$date]); // Done with this date, next one.
       reset($commit_actions_by_date); // Set the array pointer to the start.
@@ -391,7 +396,7 @@ function _versioncontrol_cvs_log_group_actions(&$commit_actions_by_date, $refere
   // Commits that take longer than half a minute are unlikely enough to be
   // disregarded here.
   for ($date = $file_revision->date; $date < ($file_revision->date + 30); $date++) {
-    if (!isset($commit_actions_by_date[$date]) {
+    if (!isset($commit_actions_by_date[$date])) {
       continue;
     }
 
@@ -418,7 +423,7 @@ function _versioncontrol_cvs_log_group_actions(&$commit_actions_by_date, $refere
  * That commit information is then stored as a list item in the given
  * $commits array as an object with 'commit' and 'commit_actions' properties.
  */
-function _versioncontrol_cvs_log_construct_commit(&$commits, $commit_actions) {
+function _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, &$commits) {
   $date = 0;
 
   // Get any of those commit properties, apart from the date (which may

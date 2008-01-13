@@ -61,11 +61,10 @@ function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
     '#description' => t('Automatic log retrieval requires cron.'),
     '#default_value' => isset($repository)
                         ? $repository['cvs_specific']['update_method']
-                        : VERSIONCONTROL_CVS_UPDATE_XCVS,
+                        : VERSIONCONTROL_CVS_UPDATE_CRON,
     '#weight' => 10,
     '#options' => array(
-      // log retrieval is not yet ported from cvs.module
-      // VERSIONCONTROL_CVS_UPDATE_CRON => t('Automatic log retrieval.'),
+      VERSIONCONTROL_CVS_UPDATE_CRON => t('Automatic log retrieval.'),
       VERSIONCONTROL_CVS_UPDATE_XCVS => t('Use external script to insert data.'),
     ),
   );
@@ -154,7 +153,7 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
     }
     else if ($repositories[$repo_id]['cvs_specific']['update_method'] == VERSIONCONTROL_CVS_UPDATE_CRON) {
       $rows_by_repo_id[$repo_id][] = t('logs (!fetch)', array(
-        '!fetch' => l(t('fetch now'), 'admin/project/versioncontrol-repositories/update/'. $repo_id)
+        '!fetch' => l(t('fetch now'), 'admin/project/versioncontrol-repositories/update/cvs/'. $repo_id)
       ));
       $rows_by_repo_id[$repo_id][] = $repositories[$repo_id]['cvs_specific']['updated']
                                      ? format_date($repositories[$repo_id]['cvs_specific']['updated'])
