@@ -378,6 +378,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
   ksort($commits);
   foreach ($commits as $date => $date_commits) {
     foreach ($date_commits as $commit_info) {
+      _versioncontrol_cvs_fix_commit_actions($commit_info->commit, $commit_info->commit_actions);
       versioncontrol_insert_commit($commit_info->commit, $commit_info->commit_actions);
     }
   }

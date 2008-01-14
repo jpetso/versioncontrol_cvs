@@ -213,6 +213,7 @@ function xcvs_init($argc, $argv) {
           'branch_id' => $branch_id,
         ),
       );
+      _versioncontrol_cvs_fix_commit_actions($commit, $commit_actions);
       versioncontrol_insert_commit($commit, $commit_actions);
     }
 
