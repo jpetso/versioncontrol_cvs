@@ -49,7 +49,7 @@ function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
   $form['repository_information']['modules'] = array(
     '#type' => 'textfield',
     '#title' => t('Modules'),
-    '#description' => t('Separate multiple CVS modules with spaces.'),
+    '#description' => t('Separate multiple CVS modules with spaces. If the "Automatic log retrieval" update method is enabled, only commits in these modules will be recorded. (Leave empty to record all commits, including those in CVSROOT.)'),
     '#default_value' => isset($repository) ? implode(' ', $repository['cvs_specific']['modules']) : '',
     '#weight' => 7,
     '#size' => 40,
@@ -149,16 +149,15 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
 
     if ($repositories[$repo_id]['cvs_specific']['update_method'] == VERSIONCONTROL_CVS_UPDATE_XCVS) {
       $rows_by_repo_id[$repo_id][] = t('external script');
-      $rows_by_repo_id[$repo_id][] = t('n/a');
     }
     else if ($repositories[$repo_id]['cvs_specific']['update_method'] == VERSIONCONTROL_CVS_UPDATE_CRON) {
       $rows_by_repo_id[$repo_id][] = t('logs (!fetch)', array(
         '!fetch' => l(t('fetch now'), 'admin/project/versioncontrol-repositories/update/cvs/'. $repo_id)
       ));
-      $rows_by_repo_id[$repo_id][] = $repositories[$repo_id]['cvs_specific']['updated']
-                                     ? format_date($repositories[$repo_id]['cvs_specific']['updated'])
-                                     : t('never');
     }
+    $rows_by_repo_id[$repo_id][] = $repositories[$repo_id]['cvs_specific']['updated']
+      ? format_date($repositories[$repo_id]['cvs_specific']['updated'], 'small')
+      : t('never');
   }
 }
 

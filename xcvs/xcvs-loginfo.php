@@ -99,6 +99,7 @@ function xcvs_parse_log($input_stream) {
  * Bootstrap Drupal, gather commit data and pass it on to Version Control API.
  */
 function xcvs_init($argc, $argv) {
+  $date = time(); // remember the time of the current commit for later
   $this_file = array_shift($argv);   // argv[0]
 
   if ($argc < 7) {
@@ -205,7 +206,7 @@ function xcvs_init($argc, $argv) {
       // Prepare the data for passing it to Version Control API.
       $commit = array(
         'repo_id' => $xcvs['repo_id'],
-        'date' => time(),
+        'date' => $date,
         'username' => $username,
         'message' => $message,
         'revision' => '',
@@ -215,6 +216,11 @@ function xcvs_init($argc, $argv) {
       );
       _versioncontrol_cvs_fix_commit_actions($commit, $commit_actions);
       versioncontrol_insert_commit($commit, $commit_actions);
+
+      // Remember the update time so that previous commits won't be inserted
+      // in case the repository is switched to log fetching mode.
+      db_query('UPDATE {versioncontrol_cvs_repositories}
+                SET updated = %d WHERE repo_id = %d', $date, $xcvs['repo_id']);
     }
 
     // Clean up
