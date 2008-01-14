@@ -12,7 +12,6 @@
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
-// TODO: Make sure we don't insert the same revision twice.
 
 /**
  * Actually update the repository by fetching commits and other stuff
@@ -286,6 +285,18 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
   $commit_actions_by_user = array();
 
   foreach ($file_revisions as $file_revision) {
+    // Don't insert the same revision twice.
+    $count = db_result(db_query(
+      "SELECT COUNT(*)
+       FROM {versioncontrol_cvs_item_revisions} ir
+         INNER JOIN {versioncontrol_commits} c ON ir.commit_id = c.commit_id
+       WHERE c.repo_id = %d AND ir.path = '%s' AND ir.revision = '%s'",
+      $repository['repo_id'], $file_revision->path, $file_revision->revision
+    ));
+    if ($count > 0) {
+      continue;
+    }
+
     // We might only pick one of those (depending if the file
     // has been added, modified or deleted) but let's add both
     // current and source items for now.
