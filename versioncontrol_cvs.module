@@ -101,6 +101,27 @@ function versioncontrol_cvs_menu($may_cache) {
   return $items;
 }
 
+/**
+ * Implementation of hook_cron():
+ * Update repositories that have log fetching enabled.
+ */
+function versioncontrol_cvs_cron() {
+  $result = db_query("SELECT repo_id FROM {versioncontrol_cvs_repositories}
+                      WHERE update_method = %d", VERSIONCONTROL_CVS_UPDATE_CRON);
+
+  // Set timeout limit to 3600 seconds as it can take a long time to process
+  // the log initially. (And hook_cron() might be called by poormanscron.)
+  if (!ini_get('safe_mode')) {
+    set_time_limit(3600);
+  }
+  while ($repo = db_fetch_object($result)) {
+    $repository = versioncontrol_get_repository($repo->repo_id);
+    if (isset($repository)) {
+      _versioncontrol_cvs_update_repository($repository);
+    }
+  }
+}
+
 
 /**
  * Implementation of [versioncontrol_backend]_get_commit_actions():
