@@ -289,9 +289,12 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
     $count = db_result(db_query(
       "SELECT COUNT(*)
        FROM {versioncontrol_cvs_item_revisions} ir
-         INNER JOIN {versioncontrol_commits} c ON ir.commit_id = c.commit_id
-       WHERE c.repo_id = %d AND ir.path = '%s' AND ir.revision = '%s'",
-      $repository['repo_id'], $file_revision->path, $file_revision->revision
+        INNER JOIN {versioncontrol_operations} op
+         ON ir.vc_op_id = op.vc_op_id
+       WHERE op.repo_id = %d AND op.type = %d
+        AND ir.path = '%s' AND ir.revision = '%s'",
+      $repository['repo_id'], VERSIONCONTROL_OPERATION_COMMIT,
+      $file_revision->path, $file_revision->revision
     ));
     if ($count > 0) {
       continue;
@@ -330,10 +333,6 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
         $commit_action['action'] = VERSIONCONTROL_ACTION_ADDED;
         unset($commit_action['source items']);
       }
-      // TODO: files that are 'Exp' while the previous rev was 'dead'
-      // are also added. In order to improve the results, we might want
-      // to retrieve previous revisions and check if it was newly added.
-      // On the other hand... bah, no one probably cares about this anyways.
     }
 
     if (isset($file_revision->commitid)) {

@@ -216,11 +216,6 @@ function xcvs_init($argc, $argv) {
       );
       _versioncontrol_cvs_fix_commit_actions($commit, $commit_actions);
       versioncontrol_insert_commit($commit, $commit_actions);
-
-      // Remember the update time so that previous commits won't be inserted
-      // in case the repository is switched to log fetching mode.
-      db_query('UPDATE {versioncontrol_cvs_repositories}
-                SET updated = %d WHERE repo_id = %d', $date, $xcvs['repo_id']);
     }
 
     // Clean up

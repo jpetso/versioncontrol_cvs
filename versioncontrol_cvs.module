@@ -171,7 +171,7 @@ function versioncontrol_cvs_get_commit_actions($commit) {
   $result = db_query('SELECT item_revision_id, action, type, path,
                              revision, lines_added, lines_removed
                       FROM {versioncontrol_cvs_item_revisions}
-                      WHERE commit_id = %d', $commit['commit_id']);
+                      WHERE vc_op_id = %d', $commit['vc_op_id']);
 
   while ($item_revision = db_fetch_object($result)) {
     $action = array(
@@ -190,7 +190,7 @@ function versioncontrol_cvs_get_commit_actions($commit) {
         'cvs_specific' => array(
           'item_revision_id' => $item_revision->item_revision_id,
           'selected_branch_id' => $commit['cvs_specific']['branch_id'],
-          'selected_date' => $commit['date'],
+          'selected_op' => $commit,
         ),
       );
     }
@@ -203,7 +203,7 @@ function versioncontrol_cvs_get_commit_actions($commit) {
         'cvs_specific' => array(
           'item_revision_id' => $item_revision->item_revision_id,
           'selected_branch_id' => $commit['cvs_specific']['branch_id'],
-          'selected_date' => $commit['date'],
+          'selected_op' => $commit,
         ),
       ));
     }
@@ -240,21 +240,21 @@ function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NUL
   if ($commit_actions == NULL) {
     $commit_actions = versioncontrol_cvs_get_commit_actions($commit);
   }
-  
+
   $total_lines_added = 0;
   $total_lines_removed = 0;
   $per_action = array();
-  
+
   foreach ($commit_actions as $path => $action) {
     $per_action[$path] = array();
-    
+
     $per_action[$path]['lines_added'] = $action['cvs_specific']['lines_added'];
     $total_lines_added += $per_action[$path]['lines_added'];
-    
+
     $per_action[$path]['lines_removed'] = $action['cvs_specific']['lines_removed'];
     $total_lines_removed += $action['cvs_specific']['lines_removed'];
   }
-  
+
   return array(
     'lines_added' => $total_lines_added,
     'lines_removed' => $total_lines_removed,
@@ -295,14 +295,11 @@ function versioncontrol_cvs_get_directory_item($operation) {
     'path' => $operation['directory'],
     'revision' => '',
     'cvs_specific' => array(
-      'selected_date' => $operation['date'],
+      'selected_op' => $operation,
     ),
   );
   if (isset($operation['cvs_specific']['branch_id'])) { // it's a commit or branch
-    $item['selected_branch_id'] = $operation['cvs_specific']['branch_id'];
-  }
-  if (isset($operation['tag_op_id'])) { // it's a tag
-    $item['selected_tag_op'] = $operation;
+    $item['cvs_specific']['selected_branch_id'] = $operation['cvs_specific']['branch_id'];
   }
   return $item;
 }
@@ -360,7 +357,7 @@ function versioncontrol_cvs_get_branched_items($branch) {
                       FROM {versioncontrol_cvs_item_branch_points} ib
                        INNER JOIN {versioncontrol_cvs_item_revisions} ir
                         ON ib.item_revision_id = ir.item_revision_id
-                      WHERE ib.branch_op_id = %d', $branch['branch_op_id']);
+                      WHERE ib.vc_op_id = %d', $branch['vc_op_id']);
 
   while ($item_revision = db_fetch_object($result)) {
     $items[] = array(
@@ -370,7 +367,7 @@ function versioncontrol_cvs_get_branched_items($branch) {
       'cvs_specific' => array(
         'item_revision_id' => $item_revision->item_revision_id,
         'selected_branch_id' => $branch['cvs_specific']['branch_id'],
-        'selected_date' => $branch['date'],
+        'selected_op' => $branch,
       ),
     );
   }
@@ -409,7 +406,7 @@ function versioncontrol_cvs_get_tagged_items($tag) {
                       FROM {versioncontrol_cvs_item_tags} it
                        INNER JOIN {versioncontrol_cvs_item_revisions} ir
                         ON it.item_revision_id = ir.item_revision_id
-                      WHERE it.tag_op_id = %d', $tag['tag_op_id']);
+                      WHERE it.vc_op_id = %d', $tag['vc_op_id']);
 
   while ($item_revision = db_fetch_object($result)) {
     $items[] = array(
@@ -418,8 +415,7 @@ function versioncontrol_cvs_get_tagged_items($tag) {
       'revision' => $item_revision->revision,
       'cvs_specific' => array(
         'item_revision_id' => $item_revision->item_revision_id,
-        'selected_tag_op' => $tag,
-        'selected_date' => $tag['date'],
+        'selected_op' => $tag,
       ),
     );
   }
@@ -469,10 +465,10 @@ function versioncontrol_cvs_get_current_item_branch($repository, $item) {
  *   is known or applicable.
  */
 function versioncontrol_cvs_get_current_item_tag($repository, $item) {
-  if (!isset($item['cvs_specific']['selected_tag_op'])) {
+  if ($item['cvs_specific']['selected_op']['type'] != VERSIONCONTROL_OPERATION_TAG) {
     return NULL;
   }
-  return $item['cvs_specific']['selected_tag_op'];
+  return $item['cvs_specific']['selected_op'];
 }
 
 /**
@@ -526,12 +522,13 @@ function _versioncontrol_cvs_fix_commit_actions($commit, &$commit_actions) {
     $count = db_result(db_query(
       "SELECT COUNT(*)
         FROM {versioncontrol_cvs_item_revisions} ir
-          INNER JOIN {versioncontrol_commits} c
-            ON ir.commit_id = c.commit_id
-        WHERE c.repo_id = %d AND ir.type = %d
-          AND ir.path = '%s' AND ir.revision = '%s'",
-      $repo_id, VERSIONCONTROL_ITEM_FILE_DELETED,
-      $path, $action['source items'][0]['revision']
+          INNER JOIN {versioncontrol_operations} op
+            ON ir.vc_op_id = op.vc_op_id
+        WHERE op.repo_id = %d AND op.type = %d
+          AND ir.type = %d AND ir.path = '%s' AND ir.revision = '%s'",
+      $repo_id, VERSIONCONTROL_OPERATION_COMMIT,
+      VERSIONCONTROL_ITEM_FILE_DELETED, $path,
+      $action['source items'][0]['revision']
     ));
     if ($count > 0) {
       $commit_actions[$path]['action'] = VERSIONCONTROL_ACTION_ADDED;
@@ -583,10 +580,10 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
         $item_revision_id = db_next_id('{versioncontrol_cvs_item_revisions}_item_revision_id');
         db_query(
           "INSERT INTO {versioncontrol_cvs_item_revisions}
-           (item_revision_id, commit_id, type, path, revision,
+           (item_revision_id, vc_op_id, type, path, revision,
             action, lines_added, lines_removed)
            VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d)",
-          $item_revision_id, $commit['commit_id'], $type, $path, $revision,
+          $item_revision_id, $commit['vc_op_id'], $type, $path, $revision,
           $action['action'], $action['cvs_specific']['lines_added'],
           $action['cvs_specific']['lines_removed']
         );
@@ -596,7 +593,7 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
     case 'delete':
       $result = db_query('SELECT item_revision_id
                           FROM {versioncontrol_cvs_item_revisions}
-                          WHERE commit_id = %d', $commit['commit_id']);
+                          WHERE vc_op_id = %d', $commit['vc_op_id']);
 
       while ($revision = db_fetch_object($result)) {
         db_query('DELETE FROM {versioncontrol_cvs_item_tags}
@@ -607,7 +604,7 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
                   $revision->item_revision_id);
       }
       db_query('DELETE FROM {versioncontrol_cvs_item_revisions}
-                WHERE commit_id = %d', $commit['commit_id']);
+                WHERE vc_op_id = %d', $commit['vc_op_id']);
       break;
   }
 }
@@ -635,7 +632,7 @@ function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
  */
 function versioncontrol_cvs_branch_operation($op, $branch, $branched_items) {
   _versioncontrol_cvs_branch_or_tag_operation(
-    $op, $branch, $branched_items, 'item_branch_points', 'branch_op_id'
+    $op, $branch, $branched_items, 'item_branch_points'
   );
 }
 
@@ -662,16 +659,15 @@ function versioncontrol_cvs_branch_operation($op, $branch, $branched_items) {
  */
 function versioncontrol_cvs_tag_operation($op, $tag, $tagged_items) {
   _versioncontrol_cvs_branch_or_tag_operation(
-    $op, $tag, $tagged_items, 'item_tags', 'tag_op_id'
+    $op, $tag, $tagged_items, 'item_tags'
   );
 }
 
 /**
- * The implementation of the branch and tag operation hooks is essentially
- * the same (just different table and primary key names),
- * so let's share the code in this function.
+ * The implementation of the branch and tag operation hooks is essentially the
+ * same (just different table names), so let's share the code in this function.
  */
-function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items, $table_name, $primary_key_name) {
+function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items, $table_name) {
   switch ($op) {
     case 'insert':
       foreach ($items as $item) {
@@ -682,18 +678,15 @@ function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items
 
         while ($revision = db_fetch_object($result)) {
           db_query('INSERT INTO {versioncontrol_cvs_'. $table_name .'}
-                    ('. $primary_key_name .', item_revision_id)
-                    VALUES (%d, %d)',
-                    $branch_or_tag[$primary_key_name],
-                    $revision->item_revision_id);
+                    (vc_op_id, item_revision_id) VALUES (%d, %d)',
+                    $branch_or_tag['vc_op_id'], $revision->item_revision_id);
         }
       }
       break;
 
     case 'delete':
       db_query('DELETE FROM {versioncontrol_cvs_'. $table_name .'}
-                WHERE '. $primary_key_name .' = %d',
-                $branch_or_tag[$primary_key_name]);
+                WHERE vc_op_id = %d', $branch_or_tag['vc_op_id']);
       break;
   }
 }

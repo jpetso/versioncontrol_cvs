@@ -34,14 +34,14 @@ function versioncontrol_cvs_install() {
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_commits} (
-        commit_id int unsigned NOT NULL default 0,
+        vc_op_id int unsigned NOT NULL default 0,
         branch_id int unsigned NOT NULL default 0,
-        PRIMARY KEY (commit_id)
+        PRIMARY KEY (vc_op_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
         item_revision_id int unsigned NOT NULL default 0,
-        commit_id int unsigned NOT NULL default 0,
+        vc_op_id int unsigned NOT NULL default 0,
         action tinyint unsigned NOT NULL default 0,
         type tinyint NOT NULL default 0,
         path varchar(255) NOT NULL default '',
@@ -49,19 +49,19 @@ function versioncontrol_cvs_install() {
         lines_added smallint unsigned NOT NULL default 0,
         lines_removed smallint unsigned NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
-        UNIQUE KEY (commit_id, path)
+        UNIQUE KEY (vc_op_id, path)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
-        tag_op_id int unsigned NOT NULL default 0,
+        vc_op_id int unsigned NOT NULL default 0,
         item_revision_id int unsigned NOT NULL default 0,
-        PRIMARY KEY (tag_op_id, item_revision_id)
+        PRIMARY KEY (vc_op_id, item_revision_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
-        branch_op_id int unsigned NOT NULL default 0,
+        vc_op_id int unsigned NOT NULL default 0,
         item_revision_id int unsigned NOT NULL default 0,
-        PRIMARY KEY (branch_op_id, item_revision_id)
+        PRIMARY KEY (vc_op_id, item_revision_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
       break;
 
@@ -83,14 +83,14 @@ function versioncontrol_cvs_install() {
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_commits} (
-        commit_id int NOT NULL default 0,
+        vc_op_id int NOT NULL default 0,
         branch_id int NOT NULL default 0,
-        PRIMARY KEY (commit_id)
+        PRIMARY KEY (vc_op_id)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
         item_revision_id int NOT NULL default 0,
-        commit_id int NOT NULL default 0,
+        vc_op_id int NOT NULL default 0,
         action smallint NOT NULL default 0,
         type smallint NOT NULL default 0,
         path varchar(255) NOT NULL default '',
@@ -98,19 +98,19 @@ function versioncontrol_cvs_install() {
         lines_added smallint NOT NULL default 0,
         lines_removed smallint NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
-        UNIQUE (commit_id, path)
+        UNIQUE (vc_op_id, path)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
-        tag_op_id int NOT NULL default 0,
+        vc_op_id int NOT NULL default 0,
         item_revision_id int NOT NULL default 0,
-        PRIMARY KEY (tag_op_id, item_revision_id)
+        PRIMARY KEY (vc_op_id, item_revision_id)
       )");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
-        branch_op_id int NOT NULL default 0,
+        vc_op_id int NOT NULL default 0,
         item_revision_id int NOT NULL default 0,
-        PRIMARY KEY (branch_op_id, item_revision_id)
+        PRIMARY KEY (vc_op_id, item_revision_id)
       )");
       break;
   }
@@ -150,7 +150,7 @@ function versioncontrol_cvs_uninstall() {
  */
 function versioncontrol_cvs_update_1() {
   $ret = array();
-  
+
   $result = db_query('SELECT item_revision_id, source_revision
                       FROM {versioncontrol_cvs_item_revisions}
                       WHERE action = 5'); // 5 == VERSIONCONTROL_ACTION_DELETED
@@ -164,7 +164,7 @@ function versioncontrol_cvs_update_1() {
     $last_part = ((int) $last_part) + 1;
     $parts[] = (string) $last_part;
     $revision = implode('.', $parts);
-    
+
     // Ok, that's it, now store it back (but in the 'revision' field).
     // "type = 2" is for VERSIONCONTROL_ITEM_FILE_DELETED.
     $ret[] = update_sql("UPDATE {versioncontrol_cvs_item_revisions}
@@ -175,5 +175,95 @@ function versioncontrol_cvs_update_1() {
   // Now the easy part: deleting the source_revision column
   $ret[] = update_sql('ALTER TABLE {versioncontrol_cvs_item_revisions}
                        DROP COLUMN source_revision');
+  return $ret;
+}
+
+/**
+ * Update 2: Rename and reassign primary key values, hand in hand with
+ *   the same change in the API module.
+ *   This function may only be called from within versioncontrol_update_2()
+ *   as it relies on an intermediary schema state, so there's some magic
+ *   that lets the update fail if not called from within the other update.
+ */
+function versioncontrol_cvs_update_2() {
+  $ret = array();
+  $args = func_get_args();
+
+  if ($args[0] !== 'do the upgrade') {
+    $ret[] = array(
+      'success' => TRUE,
+      'query' => 'The CVS backend update has (hopefully) been executed from within the Version Control API update 2. (Look above for {versioncontrol_cvs_*} tables.) If anything went wrong, you\'ll probably have to figure it out by yourself.',
+    );
+    return $ret;
+  }
+
+  // Step 1) Rename commit_id -> vc_op_id, and create new columns for the
+  //         branch and tag operation extension tables. We'll keep commit ids,
+  //         whereas tag op and branch op ids will be made up anew.
+  switch ($GLOBALS['db_type']) {
+    case 'mysqli':
+    case 'mysql':
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_commits} CHANGE COLUMN commit_id vc_op_id int unsigned NOT NULL default 0");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_revisions} CHANGE COLUMN commit_id vc_op_id int unsigned NOT NULL default 0");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_branch_points} ADD vc_op_id int unsigned NOT NULL default 0");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_tags} ADD vc_op_id int unsigned NOT NULL default 0");
+      break;
+
+    case 'pgsql':
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_commits} RENAME commit_id TO vc_op_id");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_revisions} RENAME commit_id TO vc_op_id");
+      db_add_column($ret, 'versioncontrol_cvs_item_branch_points', 'vc_op_id', 'int', array('not null' => TRUE, 'default' => 0));
+      db_add_column($ret, 'versioncontrol_cvs_item_tags', 'vc_op_id', 'int', array('not null' => TRUE, 'default' => 0));
+      break;
+  }
+
+  // Step 2) Determine and store the vc_op_id values of branch and tag
+  //         operations. This is the part that requires this function
+  //         to be called in the middle of versioncontrol_update_2(), because
+  //         it's the only point in time where both the original id and
+  //         vc_op_id exist in the API module's tables.
+  $count = 0;
+  $result = db_query("SELECT * FROM {versioncontrol_branch_operations}");
+  while ($tag_op = db_fetch_object($result)) {
+    ++$count;
+    db_query("UPDATE {versioncontrol_cvs_item_branch_points}
+              SET vc_op_id = %d WHERE branch_op_id = %d",
+              $tag_op->vc_op_id, $tag_op->branch_op_id);
+  }
+  $result = db_query("SELECT * FROM {versioncontrol_tag_operations}");
+  while ($tag_op = db_fetch_object($result)) {
+    ++$count;
+    db_query("UPDATE {versioncontrol_cvs_item_tags}
+              SET vc_op_id = %d WHERE tag_op_id = %d",
+              $tag_op->vc_op_id, $tag_op->tag_op_id);
+  }
+  if ($count > 0) {
+    $ret[] = array(
+      'success' => TRUE,
+      'query' => $count .' UPDATE statements for {versioncontrol_cvs_item_branch_points} and {versioncontrol_item_tags}, adopting vc_op_id from the appropriate values in {versioncontrol_operations}.',
+    );
+  }
+
+  // Now that the ids have been migrated, reassign the primary key
+  // and delete the obsolete columns.
+  switch ($GLOBALS['db_type']) {
+    case 'mysqli':
+    case 'mysql':
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_branch_points} DROP PRIMARY KEY");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_branch_points} ADD PRIMARY KEY (vc_op_id, item_revision_id)");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_tags} DROP PRIMARY KEY");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_tags} ADD PRIMARY KEY (vc_op_id, item_revision_id)");
+      break;
+
+    case 'pgsql':
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_branch_points} DROP CONSTRAINT {versioncontrol_cvs_item_branch_points}_pkey"); // Drop the primary key constraint which would prohibit us from deleting the primary key column.
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_branch_points} ADD PRIMARY KEY (vc_op_id, item_revision_id)");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_tags} DROP CONSTRAINT {versioncontrol_cvs_item_tags}_pkey");
+      $ret[] = update_sql("ALTER TABLE {versioncontrol_cvs_item_tags} ADD PRIMARY KEY (vc_op_id, item_revision_id)");
+      break;
+  }
+  $ret[] = update_sql('ALTER TABLE {versioncontrol_cvs_item_branch_points} DROP COLUMN branch_op_id');
+  $ret[] = update_sql('ALTER TABLE {versioncontrol_cvs_item_tags} DROP COLUMN tag_op_id');
+
   return $ret;
 }
