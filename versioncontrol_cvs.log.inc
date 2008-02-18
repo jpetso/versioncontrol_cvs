@@ -326,7 +326,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
 
     if ($file_revision->dead) {
       $commit_action['action'] = VERSIONCONTROL_ACTION_DELETED;
-      unset($commit_action['current item']);
+      $commit_action['current item']['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
     }
     else {
       if ($file_revision->revision === '1.1') {
