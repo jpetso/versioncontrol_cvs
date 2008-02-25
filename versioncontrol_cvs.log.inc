@@ -197,7 +197,7 @@ function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
     $separator = $next($logs); // like, "----------------------------"
 
     for ($i = 0; $i < $file->number_revisions; $i++) {
-      $file_revision = new StdClass();
+      $file_revision = new stdClass();
       $file_revision->path = $file->path;
 
       $parts = explode(' ', $next($logs)); // that line is like "revision 1.9"
@@ -464,7 +464,7 @@ function _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, 
     ),
   );
 
-  $commit_info = new StdClass();
+  $commit_info = new stdClass();
   $commit_info->commit = $commit;
   $commit_info->commit_actions = $commit_actions;
   $commits[$date][] = $commit_info;
