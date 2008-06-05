@@ -9,6 +9,7 @@
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
+// TODO: remove versioncontrol_cvs_get_{branched,tagged}_items()
 
 // Update methods.
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);
@@ -303,27 +304,6 @@ function versioncontrol_cvs_get_directory_item($operation) {
     $item['cvs_specific']['selected_tag_name'] = $operation['tag_name'];
   }
   return $item;
-}
-
-/**
- * Implementation of [versioncontrol_backend]_get_commit_branches():
- * Retrieve the branches that have been affected by the given commit.
- *
- * @return
- *   An array of strings that identify a branch in the respective repository,
- *   or an empty array if no branches were affected at all. (For CVS, there
- *   should always be a exactly one branch in the resulting array.)
- */
-function versioncontrol_cvs_get_commit_branches($commit) {
-  if (!isset($commit['cvs_specific']['branch_id'])) {
-    return array();
-  }
-
-  $branch = versioncontrol_get_branch($commit['cvs_specific']['branch_id']);
-  if (!isset($branch)) {
-    return array(); // should only happen in case of database inconsistencies
-  }
-  return array($branch['branch_name']);
 }
 
 /**
