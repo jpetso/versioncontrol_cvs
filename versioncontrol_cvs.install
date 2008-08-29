@@ -267,3 +267,65 @@ function versioncontrol_cvs_update_2() {
 
   return $ret;
 }
+
+/**
+ * Update 3: Move item revisions to the API module's tables.
+ */
+function versioncontrol_cvs_update_3() {
+  $ret = array();
+
+  // Make sure we can access the required functions even from the .install file.
+  include_once(drupal_get_path('module', 'versioncontrol') .'/versioncontrol.module');
+  include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.module');
+
+  $items = array();
+  $result = db_query('SELECT ir.item_revision_id, ir.vc_op_id, ir.action,
+                             ir.type, ir.path, ir.revision, op.repo_id
+                      FROM {versioncontrol_cvs_item_revisions} ir
+                        INNER JOIN {versioncontrol_operations} op
+                          ON ir.vc_op_id = op.vc_op_id');
+
+  // Firstly, we register all the revisions with Version Control API.
+  while ($item = db_fetch_array($result)) {
+    $item['item_revision_id'] = db_next_id('{versioncontrol_item_revisions}_item_revision_id');
+    $items[$item['repo_id']][$item['path']][$item['revision']] = $item;
+
+    $ret[] = update_sql(
+      "INSERT INTO {versioncontrol_item_revisions}
+        (item_revision_id, repo_id, path, revision, type)
+        VALUES (". $item['item_revision_id'] .", ". $item['repo_id'] .",
+                '". $item['path'] ."', '". $item['revision'] ."',
+                ". $item['type'] .")");
+
+    $ret[] = update_sql(
+      "INSERT INTO {versioncontrol_operation_items}
+        (vc_op_id, item_revision_id, type)
+        VALUES (". $item['vc_op_id'] .", ". $item['item_revision_id'] .",
+                ". VERSIONCONTROL_OPERATION_MEMBER_ITEM .")");
+  }
+
+  // When everything is in there, we can connect the dots (a.k.a. source items)
+  // assuming that we recorded the previous item revisions at all.
+  foreach ($items as $repo_id => $repo_items) {
+    foreach ($repo_items as $path => $path_items) {
+      foreach ($path_items as $revision => $item) {
+        $previous_revision = versioncontrol_cvs_get_previous_revision_number($revision);
+
+        if (isset($path_items[$previous_revision])) {
+          $source_item = $path_items[$previous_revision];
+          $ret[] = update_sql(
+            "INSERT INTO {versioncontrol_source_items}
+              (item_revision_id, source_item_revision_id, action)
+              VALUES (". $item['item_revision_id'] .",
+                      ". $source_item['item_revision_id'] .",
+                      ". $item['action'] .")");
+        }
+      }
+    }
+  }
+
+  // TODO: branches and tags
+  // TODO: remove (or cut slack off) the CVS specific tables.
+
+  return $ret;
+}
