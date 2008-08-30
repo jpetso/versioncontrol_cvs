@@ -498,135 +498,35 @@ function _versioncontrol_cvs_fix_commit_actions($commit, &$commit_actions) {
 }
 
 /**
- * Implementation of [versioncontrol_backend]_commit():
- * Manage (insert or delete) additional commit data in the database.
- *
- * @param $op
- *   Either 'insert' when the commit is in the process of being created,
- *   or 'delete' if it will be deleted after this function has been called.
- * @param $commit
- *   A single commit array, like the ones returned
- *   by versioncontrol_get_commits().
- * @param $commit_actions
- *   A structured array containing the exact details of what happened to
- *   each item in this commit. The structure of this array is the same as
- *   the return value of versioncontrol_get_commit_actions().
+ * Implementation of [versioncontrol_backend]_operation():
+ * Manage (insert or delete) additional commit/tag/branch data in the database.
  */
-function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
-  switch ($op) {
-    case 'insert':
-      foreach ($commit_actions as $path => $action) {
-        $item_revision_id = db_next_id('{versioncontrol_cvs_item_revisions}_item_revision_id');
-        db_query(
-          "INSERT INTO {versioncontrol_cvs_item_revisions}
-           (item_revision_id, vc_op_id, type, path, revision,
-            action, lines_added, lines_removed)
-           VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d)",
-          $item_revision_id, $commit['vc_op_id'], $action['current item']['type'],
-          $path, $action['current item']['revision'], $action['action'],
-          $action['cvs_specific']['lines_added'], $action['cvs_specific']['lines_removed']
-        );
-      }
-      break;
-
-    case 'delete':
-      $result = db_query('SELECT item_revision_id
-                          FROM {versioncontrol_cvs_item_revisions}
-                          WHERE vc_op_id = %d', $commit['vc_op_id']);
-
-      while ($revision = db_fetch_object($result)) {
-        db_query('DELETE FROM {versioncontrol_cvs_item_tags}
-                  WHERE item_revision_id = %d',
-                  $revision->item_revision_id);
-        db_query('DELETE FROM {versioncontrol_cvs_item_branch_points}
-                  WHERE item_revision_id = %d',
-                  $revision->item_revision_id);
-      }
-      db_query('DELETE FROM {versioncontrol_cvs_item_revisions}
-                WHERE vc_op_id = %d', $commit['vc_op_id']);
-      break;
-  }
-}
-
-/**
- * Implementation of [versioncontrol_backend]_branch_operation():
- * Manage (insert or delete) additional branch operation data in the database.
- *
- * @param $op
- *   Either 'insert' when the branch operation is in the process of being created,
- *   or 'delete' if it will be deleted after this function has been called.
- * @param $branch
- *   A single branch operation array, like the one returned
- *   by versioncontrol_get_branch_operation().
- * @param $branched_items
- *   An array of all items that are affected by the branching operation.
- *   Compared to standard item arrays, the ones in here may not have the
- *   'revision' element set (however, the CVS backend always provides those)
- *   and can optionally contain a 'source branch' element that specifies
- *   the original branch name of this item.
- *   (For $op == 'delete', 'source branch' is never set.)
- *   An empty $branched_items array means that the whole repository has been
- *   branched (which is not used for CVS, as branches/tags are always assigned
- *   to specific files).
- */
-function versioncontrol_cvs_branch_operation($op, $branch, $branched_items) {
-  _versioncontrol_cvs_branch_or_tag_operation(
-    $op, $branch, $branched_items, 'item_branch_points'
-  );
-}
-
-/**
- * Implementation of [versioncontrol_backend]_tag_operation():
- * Manage (insert or delete) additional tag operation data in the database.
- *
- * @param $op
- *   Either 'insert' when the tag operation is in the process of being created,
- *   or 'delete' if it will be deleted after this function has been called.
- * @param $tag
- *   A single tag operation array, like the one returned
- *   by versioncontrol_get_tag_operation().
- * @param $tagged_items
- *   An array of all items that are affected by the tagging operation.
- *   Compared to standard item arrays, the ones in here may not have the
- *   'revision' element set (however, the CVS backend always provides those)
- *   and can optionally contain a 'source branch' element that specifies
- *   the original branch name of this item.
- *   (For $op == 'move' or $op == 'delete', 'source branch' is never set.)
- *   An empty $tagged_items array means that the whole repository has been
- *   tagged (which is not used for CVS, as branches/tags are always assigned
- *   to specific files).
- */
-function versioncontrol_cvs_tag_operation($op, $tag, $tagged_items) {
-  _versioncontrol_cvs_branch_or_tag_operation(
-    $op, $tag, $tagged_items, 'item_tags'
-  );
-}
-
-/**
- * The implementation of the branch and tag operation hooks is essentially the
- * same (just different table names), so let's share the code in this function.
- */
-function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items, $table_name) {
-  switch ($op) {
-    case 'insert':
-      foreach ($items as $item) {
-        $result = db_query("SELECT item_revision_id
-                            FROM {versioncontrol_cvs_item_revisions}
-                            WHERE path = '%s' AND revision = '%s'",
-                            $item['path'], $item['revision']);
-
-        while ($revision = db_fetch_object($result)) {
-          db_query('INSERT INTO {versioncontrol_cvs_'. $table_name .'}
-                    (vc_op_id, item_revision_id) VALUES (%d, %d)',
-                    $branch_or_tag['vc_op_id'], $revision->item_revision_id);
+function versioncontrol_cvs_operation($op, $operation, $operation_items) {
+  if ($operation['type'] == VERSIONCONTROL_OPERATION_COMMIT) {
+    switch ($op) {
+      case 'insert':
+        foreach ($operation_items as $path => $item) {
+          db_query(
+            "INSERT INTO {versioncontrol_cvs_item_revisions}
+            (item_revision_id, lines_added, lines_removed)
+            VALUES (%d, %d, %d)",
+            $item['item_revision_id'], $operation['vc_op_id'],
+            $item['cvs_specific']['lines_added'], $item['cvs_specific']['lines_removed']
+          );
         }
-      }
-      break;
+        break;
 
-    case 'delete':
-      db_query('DELETE FROM {versioncontrol_cvs_'. $table_name .'}
-                WHERE vc_op_id = %d', $branch_or_tag['vc_op_id']);
-      break;
+      case 'delete':
+        $result = db_query('SELECT item_revision_id
+                            FROM {versioncontrol_operation_items}
+                            WHERE vc_op_id = %d', $operation['vc_op_id']);
+
+        while ($item_revision_id = db_result($result)) {
+          db_query('DELETE FROM {versioncontrol_cvs_item_revisions}
+                    WHERE item_revision_id = %d', $item_revision_id);
+        }
+        break;
+    }
   }
 }
 
