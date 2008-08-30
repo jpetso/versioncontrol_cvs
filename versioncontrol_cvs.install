@@ -45,18 +45,6 @@ function versioncontrol_cvs_install() {
         lines_removed smallint unsigned NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
-        vc_op_id int unsigned NOT NULL default 0,
-        item_revision_id int unsigned NOT NULL default 0,
-        PRIMARY KEY (vc_op_id, item_revision_id)
-      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
-        vc_op_id int unsigned NOT NULL default 0,
-        item_revision_id int unsigned NOT NULL default 0,
-        PRIMARY KEY (vc_op_id, item_revision_id)
-      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
       break;
 
     case 'pgsql':
@@ -113,8 +101,6 @@ function versioncontrol_cvs_uninstall() {
   db_query('DROP TABLE {versioncontrol_cvs_repositories}');
   db_query('DROP TABLE {versioncontrol_cvs_commits}');
   db_query('DROP TABLE {versioncontrol_cvs_item_revisions}');
-  db_query('DROP TABLE {versioncontrol_cvs_item_tags}');
-  db_query('DROP TABLE {versioncontrol_cvs_item_branch_points}');
 }
 
 
