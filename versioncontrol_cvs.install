@@ -41,15 +41,9 @@ function versioncontrol_cvs_install() {
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
         item_revision_id int unsigned NOT NULL default 0,
-        vc_op_id int unsigned NOT NULL default 0,
-        action tinyint unsigned NOT NULL default 0,
-        type tinyint NOT NULL default 0,
-        path varchar(255) NOT NULL default '',
-        revision varchar(255) NOT NULL default '',
         lines_added smallint unsigned NOT NULL default 0,
         lines_removed smallint unsigned NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
-        UNIQUE KEY (vc_op_id, path)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
@@ -90,27 +84,9 @@ function versioncontrol_cvs_install() {
 
       db_query("CREATE TABLE {versioncontrol_cvs_item_revisions} (
         item_revision_id int NOT NULL default 0,
-        vc_op_id int NOT NULL default 0,
-        action smallint NOT NULL default 0,
-        type smallint NOT NULL default 0,
-        path varchar(255) NOT NULL default '',
-        revision varchar(255) NOT NULL default '',
         lines_added smallint NOT NULL default 0,
         lines_removed smallint NOT NULL default 0,
         PRIMARY KEY (item_revision_id),
-        UNIQUE (vc_op_id, path)
-      )");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_item_tags} (
-        vc_op_id int NOT NULL default 0,
-        item_revision_id int NOT NULL default 0,
-        PRIMARY KEY (vc_op_id, item_revision_id)
-      )");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_item_branch_points} (
-        vc_op_id int NOT NULL default 0,
-        item_revision_id int NOT NULL default 0,
-        PRIMARY KEY (vc_op_id, item_revision_id)
       )");
       break;
   }
@@ -278,7 +254,9 @@ function versioncontrol_cvs_update_3() {
   include_once(drupal_get_path('module', 'versioncontrol') .'/versioncontrol.module');
   include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.module');
 
-  $items = array();
+  // Step 1: item revisions (or just "items" in short).
+  $items_by_old_id = array();
+  $items_structured = array();
   $result = db_query('SELECT ir.item_revision_id, ir.vc_op_id, ir.action,
                              ir.type, ir.path, ir.revision, op.repo_id
                       FROM {versioncontrol_cvs_item_revisions} ir
@@ -287,8 +265,16 @@ function versioncontrol_cvs_update_3() {
 
   // Firstly, we register all the revisions with Version Control API.
   while ($item = db_fetch_array($result)) {
+    $old_item_revision_id = $item['item_revision_id'];
     $item['item_revision_id'] = db_next_id('{versioncontrol_item_revisions}_item_revision_id');
-    $items[$item['repo_id']][$item['path']][$item['revision']] = $item;
+
+    $items_structured[$item['repo_id']][$item['path']][$item['revision']] = $item;
+    $items_by_old_id[$old_item_revision_id] = $item;
+
+    $ret[] = update_sql(
+      "UPDATE {versioncontrol_cvs_item_revisions}
+        SET item_revision_id = ". $item['item_revision_id'] ."
+        WHERE item_revision_id = ". $old_item_revision_id);
 
     $ret[] = update_sql(
       "INSERT INTO {versioncontrol_item_revisions}
@@ -306,7 +292,7 @@ function versioncontrol_cvs_update_3() {
 
   // When everything is in there, we can connect the dots (a.k.a. source items)
   // assuming that we recorded the previous item revisions at all.
-  foreach ($items as $repo_id => $repo_items) {
+  foreach ($items_structured as $repo_id => $repo_items) {
     foreach ($repo_items as $path => $path_items) {
       foreach ($path_items as $revision => $item) {
         $previous_revision = versioncontrol_cvs_get_previous_revision_number($revision);
@@ -324,8 +310,35 @@ function versioncontrol_cvs_update_3() {
     }
   }
 
-  // TODO: branches and tags
-  // TODO: remove (or cut slack off) the CVS specific tables.
+  // Step 2: tags and branches - same code, so do both at once.
+  $tables = array('versioncontrol_cvs_item_tags', 'versioncontrol_cvs_item_branch_points');
+
+  foreach ($tables as $table) {
+    $result = db_query('SELECT item_revision_id, vc_op_id FROM {'. $table .'}');
+
+    while ($op_mapping = db_fetch_object($result)) {
+      if (!isset($items_by_old_id[$op_mapping->item_revision_id])) {
+        continue;
+      }
+      $item = $items_by_old_id[$op_mapping->item_revision_id];
+
+      $ret[] = update_sql(
+        "INSERT INTO {versioncontrol_operation_items}
+          (vc_op_id, item_revision_id, type)
+          VALUES (". $op_mapping->vc_op_id .", ". $item['item_revision_id'] .",
+                  ". VERSIONCONTROL_OPERATION_MEMBER_ITEM .")");
+    }
+  }
+
+  // Step 3: Remove obsolete tables and columns.
+  foreach ($tables as $table) {
+    $ret[] = update_sql('DROP TABLE {'. $table .'}');
+  }
+  $ret[] = update_sql(
+    'ALTER TABLE {versioncontrol_cvs_item_revisions}
+      DROP COLUMN vc_op_id, DROP COLUMN action, DROP COLUMN type,
+      DROP COLUMN path, DROP COLUMN revision');
+      // KEEP lines_added, lines_removed, and of course item_revision_id
 
   return $ret;
 }
