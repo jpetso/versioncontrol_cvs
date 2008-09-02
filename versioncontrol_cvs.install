@@ -116,6 +116,7 @@ function versioncontrol_cvs_update_1() {
   $result = db_query('SELECT item_revision_id, source_revision
                       FROM {versioncontrol_cvs_item_revisions}
                       WHERE action = 5'); // 5 == VERSIONCONTROL_ACTION_DELETED
+                      // (that was then, VERSIONCONTROL_ACTION_DELETED is now 6)
 
   while ($item_revision = db_fetch_object($result)) {
     // Calculate the revision number that follows the source revision,
@@ -128,7 +129,7 @@ function versioncontrol_cvs_update_1() {
     $revision = implode('.', $parts);
 
     // Ok, that's it, now store it back (but in the 'revision' field).
-    // "type = 2" is for VERSIONCONTROL_ITEM_FILE_DELETED.
+    // "type = 2" is for VERSIONCONTROL_ITEM_FILE_DELETED (or was: it's now 3).
     $ret[] = update_sql("UPDATE {versioncontrol_cvs_item_revisions}
                          SET revision = '$revision', type = 2
                          WHERE item_revision_id = ". $item_revision->item_revision_id);
@@ -240,6 +241,12 @@ function versioncontrol_cvs_update_3() {
   include_once(drupal_get_path('module', 'versioncontrol') .'/versioncontrol.module');
   include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.module');
 
+  // Step 0: Version Control API now provides sane constants for item and
+  //   action types - starting at 1 instead of 0. So before moving those to
+  //   the centralized tables, make sure they contain the correct constants.
+  $ret[] = update_sql('UPDATE {versioncontrol_cvs_item_revisions}
+                       SET action = action + 1, type = type + 1');
+
   // Step 1: item revisions (or just "items" in short).
   $items_by_old_id = array();
   $items_structured = array();
@@ -281,15 +288,24 @@ function versioncontrol_cvs_update_3() {
   foreach ($items_structured as $repo_id => $repo_items) {
     foreach ($repo_items as $path => $path_items) {
       foreach ($path_items as $revision => $item) {
-        $previous_revision = versioncontrol_cvs_get_previous_revision_number($revision);
+        if ($item['action'] == VERSIONCONTROL_ACTION_ADDED) {
+          $source_item_revision_id = 0; // the special "empty" item
+        }
+        else {
+          $previous_revision = versioncontrol_cvs_get_previous_revision_number($revision);
 
-        if (isset($path_items[$previous_revision])) {
-          $source_item = $path_items[$previous_revision];
+          if (isset($path_items[$previous_revision])) {
+            $source_item = $path_items[$previous_revision];
+            $source_item_revision_id = $source_item['item_revision_id'];
+          }
+        }
+
+        if (isset($source_item_revision_id)) {
           $ret[] = update_sql(
             "INSERT INTO {versioncontrol_source_items}
               (item_revision_id, source_item_revision_id, action)
               VALUES (". $item['item_revision_id'] .",
-                      ". $source_item['item_revision_id'] .",
+                      ". $source_item_revision_id .",
                       ". $item['action'] .")");
         }
       }

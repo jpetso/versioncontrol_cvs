@@ -72,11 +72,6 @@ function versioncontrol_cvs_versioncontrol_backends() {
         // {versioncontrol_cvs_repositories} and versioncontrol_get_repositories()
         // will automatically fetch it from there.
         VERSIONCONTROL_FLAG_AUTOADD_REPOSITORIES,
-        // versioncontrol_insert_commit() will automatically insert
-        // array elements from $commit['cvs_specific'] into
-        // {versioncontrol_cvs_commits} and versioncontrol_get_commits()
-        // will automatically fetch it from there.
-        VERSIONCONTROL_FLAG_AUTOADD_COMMITS,
       ),
     ),
   );
