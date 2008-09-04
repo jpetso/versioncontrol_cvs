@@ -226,9 +226,6 @@ function versioncontrol_cvs_get_commit_actions($commit) {
  *   - 'per_action_statistics': An array containing statistics on individual actions. Array keys are
  *        the current/new paths (just as with versioncontrol_get_commit_actions). The corresponding
  *        array values are again structured arrays and consist of elements with the following keys:
- *   
- *   - 'lines_added': Number of lines added in this action
- *   - 'lines_removed': Number of lines removed in this action
  */
 function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NULL) {
   if ($commit_actions == NULL) {
@@ -255,50 +252,6 @@ function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NUL
     'action_count' => count($per_action),
     'per_action_statistics' => $per_action,
   );
-}
-
-/**
- * Implementation of [versioncontrol_backend]_get_directory_item():
- * Retrieve the item of the deepest-level directory in the repository that is
- * common to all the changed/branched/tagged items in a commit, branch or
- * tag operation. In other words, this function gets you the item
- * for $operation['directory'].
- *
- * @param $operation
- *   The commit, branch or tag operation whose deepest-level
- *   changed/branched/tagged directory should be retrieved.
- *
- * @return
- *   The requested directory item. Item values are structured arrays and
- *   consist of elements with the following keys:
- *
- *   - 'type': Specifies the item type, which in this case can only be
- *        VERSIONCONTROL_ITEM_DIRECTORY.
- *   - 'path': The path of the directory, which will be the same
- *        as $operation['directory'].
- *   - 'revision': The (file-level) revision when the item was last changed.
- *        If there is no such revision (which may be the case for
- *        directory items) then the 'revision' element is an empty string.
- *   - '[xxx]_specific': May be set by the backend to remember additional
- *        item info. ("[xxx]" is the unique string identifier
- *        of the respective version control system.)
- */
-function versioncontrol_cvs_get_directory_item($operation) {
-  $item = array(
-    'type' => VERSIONCONTROL_ITEM_DIRECTORY,
-    'path' => $operation['directory'],
-    'revision' => '',
-    'cvs_specific' => array(
-      'selected_op' => $operation,
-    ),
-  );
-  if (isset($operation['cvs_specific']['branch_id'])) { // it's a commit or branch
-    $item['cvs_specific']['selected_branch_id'] = $operation['cvs_specific']['branch_id'];
-  }
-  if ($operation['type'] == VERSIONCONTROL_OPERATION_TAG) {
-    $item['cvs_specific']['selected_tag_name'] = $operation['tag_name'];
-  }
-  return $item;
 }
 
 /**
