@@ -9,7 +9,6 @@
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
-// TODO: remove versioncontrol_cvs_get_{branched,tagged}_items()
 
 // Update methods.
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);
