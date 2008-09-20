@@ -137,7 +137,9 @@ function versioncontrol_cvs_cron() {
  *        the current/new paths (just as with versioncontrol_get_commit_actions). The corresponding
  *        array values are again structured arrays and consist of elements with the following keys:
  */
-function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NULL) {
+// TODO: Rethink - probably get line change counts into
+//       {versioncontrol_source_items} and kill off this function altogether.
+/*function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NULL) {
   if ($commit_actions == NULL) {
     $commit_actions = versioncontrol_cvs_get_commit_actions($commit);
   }
@@ -162,7 +164,7 @@ function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NUL
     'action_count' => count($per_action),
     'per_action_statistics' => $per_action,
   );
-}
+}*/
 
 /**
  * Implementation of [versioncontrol_backend]_get_selected_operation_item_label():
