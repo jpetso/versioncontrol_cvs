@@ -167,13 +167,13 @@ function versioncontrol_cvs_cron() {
 }*/
 
 /**
- * Implementation of [versioncontrol_backend]_get_selected_operation_item_label():
+ * Implementation of [versioncontrol_backend]_get_selected_label_from_operation():
  * Retrieve the tag or branch that applied to that item during the given
  * operation. The result of this function will be used for the selected label
  * property of each item, which is necessary to provide a starting point for
  * branch and tag navigation.
  */
-function versioncontrol_cvs_get_selected_operation_item_label($operation, &$item) {
+function versioncontrol_cvs_get_selected_label_from_operation($operation, $target_item) {
   // Each operation by the CVS backend has exactly one branch or tag assigned,
   // so we can just return that one for all items in any operation.
   // NOTE: That might change though, in case the CVS backend gets functionality
@@ -186,21 +186,35 @@ function versioncontrol_cvs_get_selected_operation_item_label($operation, &$item
 }
 
 /**
- * Implementation of [versioncontrol_backend]_get_selected_source_item_label():
- * Retrieve the tag or branch that applied to the source item of a given
- * successor item revision (a.k.a. "target item"). The result of this function
- * will be used for the selected label property of each item, which is
- * necessary to provide a starting point for branch and tag navigation.
+ * Implementation of [versioncontrol_backend]_get_selected_label_from_other_item():
+ * Retrieve a valid label (tag or branch) for a new @p $target_item that is
+ * (hopefully) similar or related to that of the given @p $other_item which
+ * already has a selected label assigned. If the backend cannot find a related
+ * label, return any valid label. The result of this function will be used for
+ * the selected label property of each item, which is necessary to preserve the
+ * item state throughout navigational API functions.
  */
-function versioncontrol_cvs_get_selected_source_item_label($repository, $successor_item, &$source_item) {
+function versioncontrol_cvs_get_selected_label_from_other_item($repository, $target_item, &$other_item, $other_item_tags = array()) {
+  // First up, optimizations - maybe we can do without the generic
+  // "label transfer" code from further down and use assumptions instead.
+
+  // A directory can always have the same tag name as another item, in the
+  // worst case a directory content listing just won't list any files.
+  if (versioncontrol_is_directory_item($target_item)) {
+    return versioncontrol_get_item_selected_label($repository, $other_item);
+  }
+
   // Each source item is also available on the same branch as its successor.
   // That means we can take the label as is - if it's actually a branch.
-  $label = versioncontrol_get_item_selected_label($repository, $successor_item);
+  if ($other_item == 'successor_item') {
+    $label = versioncontrol_get_item_selected_label($repository, $other_item);
 
-  if (isset($label['type']) && $label['type'] == VERSIONCONTROL_OPERATION_BRANCH) {
-    return $label;
+    if (isset($label['type']) && $label['type'] == VERSIONCONTROL_OPERATION_BRANCH) {
+      return $label;
+    }
   }
-  // Otherwise we can't really figure out know the successor item's branch -
+
+  // Otherwise we can't really figure out a label for this item -
   // it's a tag label array or NULL - so we either have to query CVS itself
   // (most correct solution except when invoking CVS fails for any reason),
   // or look up in the database if we know the commit associated to this item
@@ -209,29 +223,26 @@ function versioncontrol_cvs_get_selected_source_item_label($repository, $success
   // of those don't work, we can only return NULL - which is not really a nice
   // thing to do, as normally the CVS backend always provides a branch.
   // But that's how it goes, I guess.
-  else {
-    // Try 1 (more performant than process invocation):
-    // Look if the database contains the associated commit.
-    $constraints = array('repo_ids' => array($repository['repo_id']));
-    if (isset($source_item['item_revision_id'])) {
-      $constraints['item_revision_id'] = array($source_item['item_revision_id']);
-    }
-    else {
-      $constraints['item_revisions'] = array($source_item['revision']);
-      $constraints['paths'] = array($source_item['path']);
-    }
-    $commit_operations = versioncontrol_get_commits($constraints);
+
+  // Try 1 (more performant than process invocation):
+  // Look if the database contains the associated commit.
+  if (versioncontrol_fetch_item_revision_id($target_item)) {
+    $constraints = array(
+      'item_revision_id' => array($target_item['item_revision_id']),
+    );
+    $commit_operations = versioncontrol_get_commit_operations($constraints);
 
     if (!empty($commit_operations)) { // yo, found the associated commit!
-      $commit_operation = reset($commit_operations); // first (only) array element
+      $commit_operation = reset($commit_operations); // first (only) element
       return $commit_operation['labels'][0];
     }
-
-    // Hm, didn't work, so...
-    // Try 2: Get the information directly from the CVS process.
-    // TODO: implement? or just leave it at that as "good enough"?
   }
-  // No label could be retrieved by looking at the successor item, sorry.
+
+  // Hm, didn't work, so...
+  // Try 2: Get the information directly from the CVS process.
+  // TODO: implement? or just leave it at that as "good enough"?
+
+  // No label could be retrieved by looking at the other item, sorry.
   return NULL;
 }
 
@@ -258,13 +269,15 @@ function versioncontrol_cvs_get_selected_source_item_label($repository, $success
 function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = NULL) {
   // Custom implementation for CVS, as directory items don't have a revision.
   if (!isset($parent_path)) {
-    $item['path'] = dirname($item['path']);
-    $item['revision'] = '';
-    return $item;
+    $parent_item = clone($item);
+    $parent_item['path'] = dirname($item['path']);
+    $parent_item['revision'] = '';
+    return $parent_item;
   }
   else if (strpos($item['path'] .'/', $parent_path .'/') !== FALSE) {
-    $item['path'] = $parent_path;
-    $item['revision'] = '';
+    $parent_item = clone($item);
+    $parent_item['path'] = $parent_path;
+    $parent_item['revision'] = '';
     return $item;
   }
   return NULL;
@@ -278,6 +291,7 @@ function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = N
  * a commit actions array accordingly if the database tells us that the
  * previous revision of a file was dead.
  */
+// TODO: port to the 2.x API
 function _versioncontrol_cvs_fix_commit_actions($commit, &$commit_actions) {
   foreach ($commit_actions as $path => $action) {
     if ($action['action'] != VERSIONCONTROL_ACTION_MODIFIED) {
@@ -308,6 +322,12 @@ function _versioncontrol_cvs_fix_commit_actions($commit, &$commit_actions) {
  * Implementation of [versioncontrol_backend]_operation():
  * Manage (insert or delete) additional commit/tag/branch data in the database.
  */
+// TODO: $item['cvs_specific'] doesn't exist anymore. (should it? hm.)
+//       On the other hand, I think it survives long enough to get through
+//       to this function nevertheless, but that's probably rather luck than
+//       intention. Figure out what to do with backend specific additions,
+//       and move line change counts into the API module wholesale (as optional
+//       feature for backends).
 function versioncontrol_cvs_operation($op, $operation, $operation_items) {
   if ($operation['type'] == VERSIONCONTROL_OPERATION_COMMIT) {
     switch ($op) {
