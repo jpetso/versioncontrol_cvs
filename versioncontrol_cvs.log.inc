@@ -54,8 +54,7 @@ function _versioncontrol_cvs_log_update_repository(&$repository) {
     $subdir = escapeshellcmd($subdir);
 
     if (variable_get('versioncontrol_cvs_log_use_file', 1)) {
-      $temp_dir = variable_get('file_directory_temp', (PHP_OS == 'WINNT' ? 'c:\\windows\\temp' : '/tmp'));
-      $temp_file = $temp_dir .'/cvs-'. rand();
+      $temp_file = file_directory_temp() .'/cvs-'. mt_rand();
       exec("cvs -qnf -d $root rlog -S $date $subdir > $temp_file");
       $logs = fopen($temp_file, 'r');
     }
