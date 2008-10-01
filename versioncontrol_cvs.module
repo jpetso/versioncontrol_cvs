@@ -226,7 +226,7 @@ function versioncontrol_cvs_get_selected_label_from_other_item($repository, $tar
 
   // Try 1 (more performant than process invocation):
   // Look if the database contains the associated commit.
-  if (versioncontrol_fetch_item_revision_id($target_item)) {
+  if (versioncontrol_fetch_item_revision_id($repository, $target_item)) {
     $constraints = array(
       'item_revision_id' => array($target_item['item_revision_id']),
     );
