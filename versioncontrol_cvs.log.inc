@@ -280,36 +280,36 @@ function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
  *   return values from _versioncontrol_cvs_log_parse().
  */
 function _versioncontrol_cvs_log_process($repository, $file_revisions) {
-  $commit_actions_by_commitid = array();
-  $commit_actions_by_user = array();
+  $operation_items_by_commitid = array();
+  $operation_items_by_user = array();
 
   foreach ($file_revisions as $file_revision) {
     // Don't insert the same revision twice.
     $count = db_result(db_query(
       "SELECT COUNT(*)
-       FROM {versioncontrol_cvs_item_revisions} ir
-        INNER JOIN {versioncontrol_operations} op
-         ON ir.vc_op_id = op.vc_op_id
+       FROM {versioncontrol_item_revisions} ir
+          INNER JOIN {versioncontrol_operation_items} opitem
+            ON ir.vc_op_id = opitem.vc_op_id
+          INNER JOIN {versioncontrol_operations} op
+            ON opitem.vc_op_id = op.vc_op_id
        WHERE op.repo_id = %d AND op.type = %d
         AND ir.path = '%s' AND ir.revision = '%s'",
       $repository['repo_id'], VERSIONCONTROL_OPERATION_COMMIT,
       $file_revision->path, $file_revision->revision
     ));
-    if ($count > 0) {
+    if ($count > 0) { // Item revision has been recorded already.
       continue;
     }
 
     // We might only pick one of those (depending if the file
     // has been added, modified or deleted) but let's add both
     // current and source items for now.
-    $commit_action = array(
+    $operation_item = array(
+      'type' => VERSIONCONTROL_ITEM_FILE,
+      'path' => $file_revision->path,
+      'revision' => $file_revision->revision,
       'action' => VERSIONCONTROL_ACTION_MODIFIED, // default, might be changed
-      'current item' => array(
-        'type' => VERSIONCONTROL_ITEM_FILE,
-        'path' => $file_revision->path,
-        'revision' => $file_revision->revision,
-      ),
-      'source items' => array(
+      'source_items' => array(
         array(
           'type' => VERSIONCONTROL_ITEM_FILE,
           'path' => $file_revision->path,
@@ -324,120 +324,129 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
     );
 
     if ($file_revision->dead) {
-      $commit_action['action'] = VERSIONCONTROL_ACTION_DELETED;
-      $commit_action['current item']['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
+      $operation_item['action'] = VERSIONCONTROL_ACTION_DELETED;
+      $operation_item['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
     }
     else {
       if ($file_revision->revision === '1.1') {
-        $commit_action['action'] = VERSIONCONTROL_ACTION_ADDED;
-        unset($commit_action['source items']);
+        $operation_item['action'] = VERSIONCONTROL_ACTION_ADDED;
+        $operation_item['source_items'] = array();
       }
     }
 
     if (isset($file_revision->commitid)) {
-      $commit_actions_by_commitid[$file_revision->commitid][$file_revision->path] = $commit_action;
+      $operation_items_by_commitid[$file_revision->commitid][$file_revision->path] = $operation_item;
     }
     else {
-      $commit_actions_by_user[$file_revision->username]
-        [$file_revision->date][$file_revision->path] = $commit_action;
+      $operation_items_by_user[$file_revision->username]
+        [$file_revision->date][$file_revision->path] = $operation_item;
     }
   }
 
-  $commits = array();
+  $commit_infos_by_date = array();
 
   // Part one: revisions with commitid - these are cool & easy.
-  foreach ($commit_actions_by_commitid as $commitid => $commit_actions) {
-    _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, $commits);
+  foreach ($operation_items_by_commitid as $commitid => $operation_items) {
+    _versioncontrol_cvs_log_construct_commit_operation(
+      $repository, $operation_items, $commit_infos_by_date
+    );
   }
 
   // Part two: revisions without commitid - need to apply heuristics
   // in order to get whole commits instead of separate file-by-file stuff.
-  foreach ($commit_actions_by_user as $username => $commit_actions_by_date) {
+  foreach ($operation_items_by_user as $username => $operation_items_by_date) {
     // Iterating through the date sorted array is a bit complicated
     // as we need to delete file revision elements that are determined to be
-    // in the same commit as the reference action.
-    while ($date = key($commit_actions_by_date)) {
-      while ($path = key($commit_actions_by_date[$date])) {
-        $reference_action = array_shift($commit_actions_by_date[$date]);
+    // in the same commit as the reference item.
+    while ($date = key($operation_items_by_date)) {
+      while ($path = key($operation_items_by_date[$date])) {
+        $reference_item = array_shift($operation_items_by_date[$date]);
 
-        $commit_actions = _versioncontrol_cvs_log_group_actions(
-          $commit_actions_by_date, $reference_action
+        $operation_items = _versioncontrol_cvs_log_group_items(
+          $operation_items_by_date, $reference_item
         );
-        _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, $commits);
+        _versioncontrol_cvs_log_construct_commit_operation(
+          $repository, $operation_items, $commit_infos_by_date
+        );
       }
-      unset($commit_actions_by_date[$date]); // Done with this date, next one.
-      reset($commit_actions_by_date); // Set the array pointer to the start.
+      unset($operation_items_by_date[$date]); // Done with this date, next one.
+      reset($operation_items_by_date); // Set the array pointer to the start.
     }
   }
 
-  // Ok, we've got all commits gathered and in a nice array with
+  // Ok, we've got all commit operations gathered and in a nice array with
   // the commit date as key. So the only thing that's left is to sort them
   // and then send each commit to the API function for inserting into the db.
-  ksort($commits);
-  foreach ($commits as $date => $date_commits) {
-    foreach ($date_commits as $commit_info) {
-      _versioncontrol_cvs_fix_commit_actions($commit_info->commit, $commit_info->commit_actions);
-      versioncontrol_insert_commit($commit_info->commit, $commit_info->commit_actions);
+  ksort($commit_infos_by_date);
+  foreach ($commit_infos_by_date as $date => $date_commit_infos) {
+    foreach ($date_commit_infos as $commit_info) {
+      _versioncontrol_cvs_fix_commit_operation_items(
+        $commit_info->operation, $commit_info->operation_items
+      );
+      versioncontrol_insert_operations(
+        $commit_info->operation, $commit_info->operation_items
+      );
     }
   }
 }
 
 /**
- * Extract (and delete) actions from the given $commit_actions_by_date array
+ * Extract (and delete) items from the given $operation_items_by_date array
  * that belong to the same commit as the $reference_action.
  * This function is what provides heuristics for grouping file revisions
- * (that lack a commitid) together into one commit.
+ * (that lack a commitid) together into one commit operation.
  *
  * @return
- *   One or more commit actions grouped into a commit actions array,
+ *   One or more items grouped into an $operation_items array,
  *   complete with file paths as keys as required by the Version Control API.
  */
-function _versioncontrol_cvs_log_group_actions(&$commit_actions_by_date, $reference_action) {
+function _versioncontrol_cvs_log_group_items(&$operation_items_by_date, $reference_item) {
   $file_revision = $reference_action['cvs_specific']['file_revision'];
 
-  $commit_actions = array();
-  $commit_actions[$file_revision->path] = $reference_action;
+  $operation_items = array();
+  $operation_items[$file_revision->path] = $reference_item;
 
   // Try all file revisions in the near future (next 30 seconds) to see if
   // they belong to the same commit or not. If they do, extract and delete.
   // Commits that take longer than half a minute are unlikely enough to be
   // disregarded here.
   for ($date = $file_revision->date; $date < ($file_revision->date + 30); $date++) {
-    if (!isset($commit_actions_by_date[$date])) {
+    if (!isset($operation_items_by_date[$date])) {
       continue;
     }
 
-    foreach ($commit_actions_by_date[$date] as $path => $current_action) {
-      $current_file_revision = $current_action['cvs_specific']['file_revision'];
+    foreach ($operation_items_by_date[$date] as $path => $current_item) {
+      $current_file_revision = $current_item['cvs_specific']['file_revision'];
 
       // Check for message and branch to be similar. We know that the username
-      // is similar because of we sorted by that one, and the date is
-      // near enough to be regarded as roughly the same time.
+      // is similar because we sorted by that one, and the date is near enough
+      // to be regarded as roughly the same time.
       if ($current_file_revision->message == $file_revision->message
           && $current_file_revision->branch == $file_revision->branch) {
         // So, sure enough, we have a file from the same commit here.
-        $commit_actions[$path] = $current_action;
-        unset($commit_actions_by_date[$date][$path]); // Don't process this revision twice.
+        $operation_items[$path] = $current_item;
+        unset($operation_items_by_date[$date][$path]); // Don't process this revision twice.
       }
     }
   }
-  return $commit_actions;
+  return $operation_items;
 }
 
 /**
- * Use the additional file revision information that has been stored
- * in each commit action array in order to assemble the associated commit.
+ * Use the additional file revision information that has been stored in each
+ * operation item array in order to assemble the associated commit operation.
  * That commit information is then stored as a list item in the given
- * $commits array as an object with 'commit' and 'commit_actions' properties.
+ * $commit_operations array as an object with 'operation' and 'operation_items'
+ * properties.
  */
-function _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, &$commits) {
+function _versioncontrol_cvs_log_construct_commit_operation($repository, $operation_items, &$commit_infos_by_date) {
   $date = 0;
 
-  // Get any of those commit properties, apart from the date (which may
-  // vary in large commits) they should all be the same anyways.
-  foreach ($commit_actions as $path => $commit_action) {
-    $file_revision = $commit_action['cvs_specific']['file_revision'];
-    unset($commit_actions[$path]['cvs_specific']['file_revision']);
+  // Get any of those commit properties, they should all be the same anyways
+  // (apart from the date which may vary in large commits).
+  foreach ($operation_items as $path => $item) {
+    $file_revision = $item['cvs_specific']['file_revision'];
+    unset($operation_items[$path]['cvs_specific']['file_revision']);
 
     if ($file_revision->date > $date) {
       $date = $file_revision->date;
@@ -447,24 +456,25 @@ function _versioncontrol_cvs_log_construct_commit($repository, $commit_actions, 
     $branch_name = $file_revision->branch;
   }
 
-  // Get the branch id, and insert the branch into the database
-  // if it doesn't exist yet.
-  $branch_id = versioncontrol_ensure_branch($branch_name, $repository['repo_id']);
-
-  // Yay, we have all commit actions and all information. Ready to go!
-  $commit = array(
+  // Yay, we have all operation items and all information. Ready to go!
+  $operation = array(
+    'type' => VERSIONCONTROL_OPERATION_COMMIT,
     'repo_id' => $repository['repo_id'],
     'date' => $date,
     'username' => $username,
     'message' => $message,
     'revision' => '',
-    'cvs_specific' => array(
-      'branch_id' => $branch_id,
+    'labels' => array(
+      array(
+        'name' => $branch_name,
+        'type' => VERSIONCONTROL_OPERATION_BRANCH,
+        'action' => VERSIONCONTROL_ACTION_MODIFIED,
+      ),
     ),
   );
 
   $commit_info = new stdClass();
-  $commit_info->commit = $commit;
-  $commit_info->commit_actions = $commit_actions;
-  $commits[$date][] = $commit_info;
+  $commit_info->operation = $operation;
+  $commit_info->operation_items = $operation_items;
+  $commit_infos_by_date[$date][] = $commit_info;
 }

@@ -174,14 +174,21 @@ function versioncontrol_cvs_cron() {
  * branch and tag navigation.
  */
 function versioncontrol_cvs_get_selected_label_from_operation($operation, $target_item) {
-  // Each operation by the CVS backend has exactly one branch or tag assigned,
-  // so we can just return that one for all items in any operation.
+  // Tag renames are represented by two labels, "added" and "deleted".)
+  // In that case, make sure that the "added" label will be selected.
+  if (count($operation['labels'] > 1)) {
+    foreach ($operation['labels'] as $label) {
+      if ($label['action'] == VERSIONCONTROL_ACTION_ADDED) {
+        return $label;
+      }
+    }
+  }
+  // Otherwise, each operation by the CVS backend has exactly one branch or tag
+  // assigned, so we can just return that one for all items in any operation.
   // NOTE: That might change though, in case the CVS backend gets functionality
   //       to add branches to commits later - because when another branch is
   //       forked off, all previous commits to a file are now both in the
   //       original branch *and* in the new branch. Very low priority, though.
-  // TODO: Tag renames are represented by two labels, right? ("added" and
-  //       "deleted".) Better check so that the "added" label will be selected.
   return $operation['labels'][0];
 }
 
@@ -288,32 +295,33 @@ function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = N
  * CVS tells us that the file was modified (has a previous revision) even if
  * it has been deleted before. Technically that's correct, but we'd like to
  * have it show up as "added", so this function tries to be smart and alters
- * a commit actions array accordingly if the database tells us that the
+ * an operation items array accordingly if the database tells us that the
  * previous revision of a file was dead.
  */
-// TODO: port to the 2.x API
-function _versioncontrol_cvs_fix_commit_actions($commit, &$commit_actions) {
-  foreach ($commit_actions as $path => $action) {
-    if ($action['action'] != VERSIONCONTROL_ACTION_MODIFIED) {
+function _versioncontrol_cvs_fix_commit_operation_items($operation, &$operation_items) {
+  foreach ($operation_items as $path => $item) {
+    if ($item['action'] != VERSIONCONTROL_ACTION_MODIFIED) {
       continue;
     }
-    $repo_id = isset($commit['repository'])
-               ? $commit['repository']['repo_id']
-               : $commit['repo_id'];
+    $repo_id = isset($operation['repository'])
+               ? $operation['repository']['repo_id']
+               : $operation['repo_id'];
     $count = db_result(db_query(
       "SELECT COUNT(*)
-        FROM {versioncontrol_cvs_item_revisions} ir
+        FROM {versioncontrol_item_revisions} ir
+          INNER JOIN {versioncontrol_operation_items} opitem
+            ON ir.vc_op_id = opitem.vc_op_id
           INNER JOIN {versioncontrol_operations} op
-            ON ir.vc_op_id = op.vc_op_id
+            ON opitem.vc_op_id = op.vc_op_id
         WHERE op.repo_id = %d AND op.type = %d
           AND ir.type = %d AND ir.path = '%s' AND ir.revision = '%s'",
       $repo_id, VERSIONCONTROL_OPERATION_COMMIT,
       VERSIONCONTROL_ITEM_FILE_DELETED, $path,
-      $action['source items'][0]['revision']
+      $action['source_items'][0]['revision']
     ));
     if ($count > 0) {
-      $commit_actions[$path]['action'] = VERSIONCONTROL_ACTION_ADDED;
-      unset($commit_actions[$path]['source items']);
+      $operation_items[$path]['action'] = VERSIONCONTROL_ACTION_ADDED;
+      $operation_items[$path]['source_items'] = array();
     }
   }
 }
@@ -335,10 +343,10 @@ function versioncontrol_cvs_operation($op, $operation, $operation_items) {
         foreach ($operation_items as $path => $item) {
           db_query(
             "INSERT INTO {versioncontrol_cvs_item_revisions}
-            (item_revision_id, lines_added, lines_removed)
-            VALUES (%d, %d, %d)",
-            $item['item_revision_id'], $operation['vc_op_id'],
-            $item['cvs_specific']['lines_added'], $item['cvs_specific']['lines_removed']
+              (item_revision_id, lines_added, lines_removed)
+              VALUES (%d, %d, %d)",
+            $item['item_revision_id'], $item['cvs_specific']['lines_added'],
+            $item['cvs_specific']['lines_removed']
           );
         }
         break;
