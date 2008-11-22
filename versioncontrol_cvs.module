@@ -119,54 +119,6 @@ function versioncontrol_cvs_cron() {
 
 
 /**
- * Implementation of [versioncontrol_backend]_get_commit_statistics():
- * Retrieve general statistics about what happened in a single commit. For more granular
- * details about what happened in a single commit, use versioncontrol_get_commit_actions.
- *
- * @param $commit
- *   The commit to retrieve statistics about
- *
- * @return
- *  A structured array containing general statistics about this commit. The array will consist
- *  of elements with the following keys:
- *
- *   - 'lines_added': Total number of lines added during this commit
- *   - 'lines_removed': Total number of lines removed during this commit
- *   - 'action_count': Total number of actions within this commit
- *   - 'per_action_statistics': An array containing statistics on individual actions. Array keys are
- *        the current/new paths (just as with versioncontrol_get_commit_actions). The corresponding
- *        array values are again structured arrays and consist of elements with the following keys:
- */
-// TODO: Rethink - probably get line change counts into
-//       {versioncontrol_source_items} and kill off this function altogether.
-/*function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NULL) {
-  if ($commit_actions == NULL) {
-    $commit_actions = versioncontrol_cvs_get_commit_actions($commit);
-  }
-
-  $total_lines_added = 0;
-  $total_lines_removed = 0;
-  $per_action = array();
-
-  foreach ($commit_actions as $path => $action) {
-    $per_action[$path] = array();
-
-    $per_action[$path]['lines_added'] = $action['cvs_specific']['lines_added'];
-    $total_lines_added += $per_action[$path]['lines_added'];
-
-    $per_action[$path]['lines_removed'] = $action['cvs_specific']['lines_removed'];
-    $total_lines_removed += $action['cvs_specific']['lines_removed'];
-  }
-
-  return array(
-    'lines_added' => $total_lines_added,
-    'lines_removed' => $total_lines_removed,
-    'action_count' => count($per_action),
-    'per_action_statistics' => $per_action,
-  );
-}*/
-
-/**
  * Implementation of [versioncontrol_backend]_get_selected_label_from_operation():
  * Retrieve the tag or branch that applied to that item during the given
  * operation. The result of this function will be used for the selected label
