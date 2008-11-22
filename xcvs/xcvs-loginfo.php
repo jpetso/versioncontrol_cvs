@@ -22,49 +22,50 @@ function xcvs_exit($status, $lastlog, $summary) {
   exit($status);
 }
 
-function xcvs_get_commit_action($file_entry) {
+function xcvs_get_operation_item($file_entry) {
   if ($file_entry) {
     list($path, $old, $new) = explode(",", $file_entry);
 
     if ($old == 'dir') { // directories can only be added in CVS
-      $action = array(
+      $item = array(
+        'type' => VERSIONCONTROL_ITEM_DIRECTORY,
+        'path' => $path,
+        'revision' => '',
         'action' => VERSIONCONTROL_ACTION_ADDED,
-        'current item' => array(
-          'type' => VERSIONCONTROL_ITEM_DIRECTORY,
-          'path' => $path,
-          'revision' => '',
-        ),
       );
-      return array($path, $action);
+      return array($path, $item);
     }
 
-    $action = array();
+    $item = array(
+      'type' => VERSIONCONTROL_ITEM_FILE,
+      'path' => $path,
+      'revision' => $new,
+      'source_items' => array(),
+    );
 
     // If it's not a directory, it must be one of three possible file actions
     if ($old == 'NONE') {
-      $action['action'] = VERSIONCONTROL_ACTION_ADDED;
+      $item['action'] = VERSIONCONTROL_ACTION_ADDED;
     }
     else if ($new == 'NONE') {
-      $action['action'] = VERSIONCONTROL_ACTION_DELETED;
+      $item['action'] = VERSIONCONTROL_ACTION_DELETED;
+      $item['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
+      // TODO: $new is 'NONE', but is still needed for uniqueness in the
+      // {versioncontrol_item_revisions} table and also for correctly being
+      // smart with "file addition disguised as modification" recognition.
+      // Can get the one (or more, if race condition?) revision after $old with
+      // "cvs log -r$old::$branch $path" (modify to rlog for script usage).
+      // See further down for "cvs rlog" usage regarding lines-changed data.
     }
     else {
-      $action['action'] = VERSIONCONTROL_ACTION_MODIFIED;
+      $item['action'] = VERSIONCONTROL_ACTION_MODIFIED;
     }
 
-    if ($new != 'NONE') {
-      $action['current item'] = array(
+    if ($old != 'NONE') {
+      $action['source_items'][] = array(
         'type' => VERSIONCONTROL_ITEM_FILE,
         'path' => $path,
-        'revision' => $new,
-      );
-    }
-    if ($old != 'NONE') {
-      $action['source items'] = array(
-        array(
-          'type' => VERSIONCONTROL_ITEM_FILE,
-          'path' => $path,
-          'revision' => $old,
-        ),
+        'revision' => $old,
       );
     }
 
@@ -154,32 +155,32 @@ function xcvs_init($argc, $argv) {
       fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
       xcvs_exit(5, $lastlog, $summary);
     }
-    $commit_actions = array();
+    $operation_items = array();
 
     // Do a full Drupal bootstrap. We need it from now on at the latest,
-    // starting with the action constants in xcvs_get_commit_action().
+    // starting with the action constants in xcvs_get_operation_item().
     xcvs_bootstrap($xcvs);
 
     while (!feof($fd)) {
       $file_entry = trim(fgets($fd));
-      list($path, $action) = xcvs_get_commit_action($file_entry);
+      list($path, $item) = xcvs_get_operation_item($file_entry);
       if ($path) {
-        $commit_actions[$path] = $action;
+        $operation_items[$path] = $item;
       }
     }
     fclose($fd);
 
     // Integrate with the Drupal Version Control API.
-    if (!empty($commit_actions)) {
+    if (!empty($operation_items)) {
 
       // Find out how many lines have been added and removed for each file.
-      foreach ($commit_actions as $action_path => $action) {
-        if (!isset($action['current item'])) {
+      foreach ($operation_items as $item_path => $item) {
+        if ($item['action'] == VERSIONCONTROL_ACTION_DELETED) {
           continue;
         }
 
-        $current_rev = $action['current item']['revision'];
-        $trimmed_path = trim($action['current item']['path'], '/');
+        $current_rev = $item['revision'];
+        $trimmed_path = trim($item['path'], '/');
         unset($output_lines);
         exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $output_lines);
 
@@ -190,32 +191,33 @@ function xcvs_init($argc, $argv) {
             break;
           }
         }
-        $commit_actions[$action_path]['cvs_specific'] = array(
-          'lines_added' => empty($matches) ? 0 : (int) $matches[1],
-          'lines_removed' => empty($matches) ? 0 : (int) $matches[2],
+        $operation_items[$item_path]['line_changes'] = array(
+          'added'   => empty($matches) ? 0 : (int) $matches[1],
+          'removed' => empty($matches) ? 0 : (int) $matches[2],
         );
       }
 
       // Get the remaining info from the commit log that we get from STDIN.
       list($branch_name, $message) = xcvs_parse_log(STDIN);
 
-      // Get the branch id, and insert the branch into the database
-      // if it doesn't exist yet.
-      $branch_id = versioncontrol_ensure_branch($branch_name, $xcvs['repo_id']);
-
       // Prepare the data for passing it to Version Control API.
-      $commit = array(
+      $operation = array(
+        'type' => VERSIONCONTROL_OPERATION_COMMIT,
         'repo_id' => $xcvs['repo_id'],
         'date' => $date,
         'username' => $username,
         'message' => $message,
         'revision' => '',
-        'cvs_specific' => array(
-          'branch_id' => $branch_id,
+        'labels' => array(
+          array(
+            'type' => VERSIONCONTROL_OPERATION_BRANCH,
+            'name' => $branch_name,
+            'action' => VERSIONCONTROL_ACTION_MODIFIED,
+          ),
         ),
       );
-      _versioncontrol_cvs_fix_commit_actions($commit, $commit_actions);
-      versioncontrol_insert_commit($commit, $commit_actions);
+      _versioncontrol_cvs_fix_commit_actions($operation, $operation_items);
+      versioncontrol_insert_commit($operation, $operation_items);
     }
 
     // Clean up

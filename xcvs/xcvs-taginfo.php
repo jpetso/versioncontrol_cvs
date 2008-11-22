@@ -73,7 +73,7 @@ function xcvs_init($argc, $argv) {
     }
 
     // Gather info for each tagged/branched file.
-    $items = array();
+    $operation_items = array();
     while (!empty($argv)) {
       $filename = array_shift($argv);
       $source_branch = array_shift($argv);
@@ -89,33 +89,40 @@ function xcvs_init($argc, $argv) {
         $item['source branch'] = empty($source_branch) ? 'HEAD' : $source_branch;
       }
 
-      $items[] = $item;
+      $operation_items[] = $item;
     }
 
-    if (empty($items)) {
+    if (empty($operation_items)) {
       exit(0); // if nothing is being tagged, we don't need to control access.
     }
 
-    $branch_or_tag = array(
-      'action' => $action,
-      'username' => $username,
-      'repo_id' => $xcvs['repo_id'],
-      'cvs_specific' => array(),
-    );
-
     if ($type == 'N') { // is a tag
-      $branch_or_tag['tag_name'] = $tag_name;
-      $access = versioncontrol_has_tag_access($branch_or_tag, $items);
+      $type = VERSIONCONTROL_OPERATION_TAG;
     }
     else if ($type == 'T') { // is a branch
-      $branch_or_tag['branch_name'] = $tag_name;
-      $access = versioncontrol_has_branch_access($branch_or_tag, $items);
+      $type = VERSIONCONTROL_OPERATION_BRANCH;
     }
+    else { // does not happen at the moment (see 'del'), but just to make sure.
+      exit(7);
+    }
+
+    $operation = array(
+      'type' => $type,
+      'username' => $username,
+      'repo_id' => $xcvs['repo_id'],
+    );
+    $label = array(
+      'type' => $type,
+      'name' => $tag_name,
+      'action' => $action,
+    );
+
+    $access = versioncontrol_has_write_access($operation, $operation_items);
 
     // Fail and print out error messages if branch/tag access has been denied.
     if (!$access) {
       fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
-      exit(7);
+      exit(8);
     }
   }
   // If we get as far as this, the tagging/branching operation may happen.
