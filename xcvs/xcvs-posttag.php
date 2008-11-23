@@ -119,7 +119,7 @@ function xcvs_init($argc, $argv) {
       $file_entry = trim(fgets($fd));
       $item = xcvs_get_item($action, $file_entry);
       if ($item) {
-        $items[] = $item;
+        $items[$item['path']] = $item;
       }
     }
     fclose($fd);
