@@ -50,26 +50,80 @@ function xcvs_get_operation_item($file_entry) {
     else if ($new == 'NONE') {
       $item['action'] = VERSIONCONTROL_ACTION_DELETED;
       $item['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
-      // TODO: $new is 'NONE', but is still needed for uniqueness in the
-      // {versioncontrol_item_revisions} table and also for correctly being
-      // smart with "file addition disguised as modification" recognition.
-      // Can get the one (or more, if race condition?) revision after $old with
-      // "cvs log -r$old::$branch $path" (modify to rlog for script usage).
-      // See further down for "cvs rlog" usage regarding lines-changed data.
+      // $item['revision'] stores 'NONE' for the time being,
+      // this is being fixed in xcvs_fix_operation_items().
     }
     else {
       $item['action'] = VERSIONCONTROL_ACTION_MODIFIED;
     }
 
     if ($old != 'NONE') {
-      $action['source_items'][] = array(
+      $item['source_items'][] = array(
         'type' => VERSIONCONTROL_ITEM_FILE,
         'path' => $path,
         'revision' => $old,
       );
     }
 
-    return array($path, $action);
+    return array($path, $item);
+  }
+}
+
+/**
+ * For deleted items, CVS doesn't tell us their new (deleted) revision,
+ * although it exists and is recorded by CVS itself. We need that revision for
+ * uniqueness of the item entry in the database, and for the CVS backend
+ * recognizing the "modified file is actually an added file" case.
+ * So let's get the revision identifier of the deleted file.
+ */
+function xcvs_fix_operation_items(&$operation_items, $branch_name) {
+  foreach ($operation_items as $path => $item) {
+    if ($item['revision'] != 'NONE') {
+      continue;
+    }
+
+    $trimmed_path = trim($item['path'], '/');
+    unset($output_lines);
+    exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$old::$branch_name -s dead $trimmed_path", $output_lines);
+
+    $matches = array();
+    foreach ($output_lines as $line) {
+      // 'revision 1.6.2.23'
+      if (preg_match('/^revision ([\d\.]+).*$/', $line, $matches)) {
+        $operation_items[$path]['revision'] = $matches[1];
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Fetch the amount of added and removed lines for each file.
+ */
+function xcvs_fetch_item_line_changes(&$operation_items) {
+  // Find out how many lines have been added and removed for each file.
+  foreach ($operation_items as $path => $item) {
+    if ($item['action'] == VERSIONCONTROL_ACTION_DELETED
+        || $item['type'] == VERSIONCONTROL_ITEM_DIRECTORY) {
+      continue;
+    }
+
+    $current_rev = $item['revision'];
+    $trimmed_path = trim($item['path'], '/');
+    unset($output_lines);
+    exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $output_lines);
+
+    $matches = array();
+    foreach ($output_lines as $line) {
+      // 'date: 2004/08/20 07:51:22;  author: dries;  state: Exp;  lines: +2 -2'
+      if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+).*$/', $line, $matches)) {
+        $operation_items[$path]['line_changes'] = array(
+          'added'   => (int) $matches[1],
+          'removed' => (int) $matches[2],
+        );
+        break;
+      }
+    }
   }
 }
 
@@ -172,33 +226,14 @@ function xcvs_init($argc, $argv) {
 
     // Integrate with the Drupal Version Control API.
     if (!empty($operation_items)) {
-
-      // Find out how many lines have been added and removed for each file.
-      foreach ($operation_items as $item_path => $item) {
-        if ($item['action'] == VERSIONCONTROL_ACTION_DELETED) {
-          continue;
-        }
-
-        $current_rev = $item['revision'];
-        $trimmed_path = trim($item['path'], '/');
-        unset($output_lines);
-        exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $output_lines);
-
-        $matches = array();
-        foreach ($output_lines as $line) {
-          // 'date: 2004/08/20 07:51:22;  author: dries;  state: Exp;  lines: +2 -2'
-          if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+).*$/', $line, $matches)) {
-            break;
-          }
-        }
-        $operation_items[$item_path]['line_changes'] = array(
-          'added'   => empty($matches) ? 0 : (int) $matches[1],
-          'removed' => empty($matches) ? 0 : (int) $matches[2],
-        );
-      }
-
       // Get the remaining info from the commit log that we get from STDIN.
       list($branch_name, $message) = xcvs_parse_log(STDIN);
+
+      // Add the real revision to deleted items.
+      xcvs_fix_operation_items($operation_items, $branch_name);
+
+      // Determine how many lines were added and removed for a given file.
+      xcvs_fetch_item_line_changes($operation_items);
 
       // Prepare the data for passing it to Version Control API.
       $operation = array(
@@ -216,8 +251,8 @@ function xcvs_init($argc, $argv) {
           ),
         ),
       );
-      _versioncontrol_cvs_fix_commit_actions($operation, $operation_items);
-      versioncontrol_insert_commit($operation, $operation_items);
+      _versioncontrol_cvs_fix_commit_operation_items($operation, $operation_items);
+      versioncontrol_insert_operation($operation, $operation_items);
     }
 
     // Clean up

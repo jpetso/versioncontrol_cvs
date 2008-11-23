@@ -89,7 +89,7 @@ function xcvs_init($argc, $argv) {
         $item['source branch'] = empty($source_branch) ? 'HEAD' : $source_branch;
       }
 
-      $operation_items[] = $item;
+      $operation_items[$item['path']] = $item;
     }
 
     if (empty($operation_items)) {
