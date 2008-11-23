@@ -86,7 +86,6 @@ function versioncontrol_cvs_uninstall() {
   db_query('DROP TABLE {versioncontrol_cvs_accounts}');
   db_query('DROP TABLE {versioncontrol_cvs_repositories}');
   db_query('DROP TABLE {versioncontrol_cvs_commits}');
-  db_query('DROP TABLE {versioncontrol_cvs_item_revisions}');
 }
 
 
