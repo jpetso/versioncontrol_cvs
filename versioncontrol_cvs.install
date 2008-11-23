@@ -32,12 +32,6 @@ function versioncontrol_cvs_install() {
         run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
       ) /*!40100 DEFAULT CHARACTER SET utf8 */");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_commits} (
-        vc_op_id int unsigned NOT NULL default 0,
-        branch_id int unsigned NOT NULL default 0,
-        PRIMARY KEY (vc_op_id)
-      ) /*!40100 DEFAULT CHARACTER SET utf8 */");
       break;
 
     case 'pgsql':
@@ -55,12 +49,6 @@ function versioncontrol_cvs_install() {
         updated int NOT NULL default 0,
         run_as_user varchar(255) NOT NULL default '',
         PRIMARY KEY (repo_id)
-      )");
-
-      db_query("CREATE TABLE {versioncontrol_cvs_commits} (
-        vc_op_id int NOT NULL default 0,
-        branch_id int NOT NULL default 0,
-        PRIMARY KEY (vc_op_id)
       )");
       break;
   }
@@ -85,7 +73,6 @@ function versioncontrol_cvs_uninstall() {
 
   db_query('DROP TABLE {versioncontrol_cvs_accounts}');
   db_query('DROP TABLE {versioncontrol_cvs_repositories}');
-  db_query('DROP TABLE {versioncontrol_cvs_commits}');
 }
 
 
@@ -354,6 +341,31 @@ function versioncontrol_cvs_update_4() {
                           WHERE item_revision_id = '. $item->item_revision_id);
   }
   $ret[] = update_sql('DROP TABLE {versioncontrol_cvs_item_revisions}');
+
+  return $ret;
+}
+
+/**
+ * Update 5: Move commit/branch associations to the API module's tables.
+ */
+function versioncontrol_cvs_update_5() {
+  $ret = array();
+
+  $result = db_query('SELECT cc.branch_id, op.vc_op_id
+                      FROM {versioncontrol_cvs_commits} cc
+                        INNER JOIN {versioncontrol_operations} op
+                          ON cc.vc_op_id = op.vc_op_id
+                        INNER JOIN {versioncontrol_labels} label
+                          ON cc.branch_id = label.label_id');
+
+  while ($commit = db_fetch_object($result)) {
+    $ret[] = update_sql('INSERT INTO {versioncontrol_operation_labels}
+                          (vc_op_id, label_id, action)
+                          VALUES ('. $commit->vc_op_id .',
+                            '. $commit->branch_id.',
+                            '. VERSIONCONTROL_ACTION_MODIFIED .')');
+  }
+  $ret[] = update_sql('DROP TABLE {versioncontrol_cvs_commits}');
 
   return $ret;
 }
