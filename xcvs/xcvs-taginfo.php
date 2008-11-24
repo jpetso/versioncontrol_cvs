@@ -10,8 +10,6 @@
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007, 2008 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
-// TODO: implement the "don't remove release tags" restriction -
-//       not in here, but rather in the release node integration
 
 function xcvs_help($cli, $output_stream) {
   fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTVv}\n\n");
