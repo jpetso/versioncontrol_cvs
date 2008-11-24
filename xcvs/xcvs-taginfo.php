@@ -48,14 +48,20 @@ function xcvs_init($argc, $argv) {
 
     switch ($cvs_op) {
       case 'add':
+        // A branch or tag is assigned to the given file(s) with revision $new.
+        // ($old == 'NONE')
         $action = VERSIONCONTROL_ACTION_ADDED;
         break;
 
       case 'mov':
+        // An existing branch or tag is deleted from the given file(s)
+        // with revision $old and added to the same file with revision $new.
         $action = VERSIONCONTROL_ACTION_MOVED;
         break;
 
       case 'del':
+        // An existing branch or tag is deleted from the given file(s) with
+        // revision $old. ($new == 'NONE')
         if (!$xcvs['allow_tag_removal']) {
           fwrite(STDERR, $xcvs['tag_delete_denied_message']);
           exit(5);
@@ -85,9 +91,9 @@ function xcvs_init($argc, $argv) {
         'path' => '/'. $dir .'/'. $filename,
         'revision' => ($new != 'NONE') ? $new : $old,
       );
-      if ($action != VERSIONCONTROL_ACTION_DELETED) {
+      /*if ($action != VERSIONCONTROL_ACTION_DELETED) {
         $item['source branch'] = empty($source_branch) ? 'HEAD' : $source_branch;
-      }
+      }*/
 
       $operation_items[$item['path']] = $item;
     }
@@ -116,6 +122,7 @@ function xcvs_init($argc, $argv) {
       'name' => $tag_name,
       'action' => $action,
     );
+    $operation['labels'] = array($label);
 
     $access = versioncontrol_has_write_access($operation, $operation_items);
 
@@ -127,7 +134,7 @@ function xcvs_init($argc, $argv) {
   }
   // If we get as far as this, the tagging/branching operation may happen.
 
-  // Remember this directory so that loginfo can combine tags/branches
+  // Remember this directory so that posttag can combine tags/branches
   // from different directories in one tag/branch entry.
   $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
   xcvs_log_add($lastlog, $dir);

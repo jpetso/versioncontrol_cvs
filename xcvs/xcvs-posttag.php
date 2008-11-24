@@ -29,7 +29,8 @@ function xcvs_get_item($action, $file_entry) {
       'type' => VERSIONCONTROL_ITEM_FILE,
       'path' => $path,
       'revision' => ($new != 'NONE') ? $new : $old,
-      'source branch' => ($action == VERSIONCONTROL_ACTION_DELETED) ? NULL : $source_branch,
+      // currently unused... do we have a use for the source branch?
+      //'source branch' => ($action == VERSIONCONTROL_ACTION_DELETED) ? NULL : $source_branch,
     );
   }
 }
@@ -113,38 +114,46 @@ function xcvs_init($argc, $argv) {
       fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
       xcvs_exit(6, $lastlog, $summary);
     }
-    $items = array();
+    $operation_items = array();
 
     while (!feof($fd)) {
       $file_entry = trim(fgets($fd));
       $item = xcvs_get_item($action, $file_entry);
       if ($item) {
-        $items[$item['path']] = $item;
+        $operation_items[$item['path']] = $item;
       }
     }
     fclose($fd);
 
-    if (empty($items)) {
+    if (empty($operation_items)) {
       // if nothing is being tagged, we don't need to log anything.
       xcvs_exit(0, $lastlog, $summary);
     }
 
-    $branch_or_tag = array(
-      'action' => $action,
+    if ($type == 'N') { // is a tag
+      $type = VERSIONCONTROL_OPERATION_TAG;
+    }
+    else if ($type == 'T') { // is a branch
+      $type = VERSIONCONTROL_OPERATION_BRANCH;
+    }
+    else { // does not happen at the moment (see 'del'), but just to make sure.
+      exit(7);
+    }
+
+    $operation = array(
+      'type' => $type,
       'date' => time(),
       'username' => $username,
       'repo_id' => $xcvs['repo_id'],
-      'cvs_specific' => array(),
     );
+    $label = array(
+      'type' => $type,
+      'name' => $tag_name,
+      'action' => $action,
+    );
+    $operation['labels'] = array($label);
 
-    if ($type == 'N') { // is a tag
-      $branch_or_tag['tag_name'] = $tag_name;
-      versioncontrol_insert_tag_operation($branch_or_tag, $items);
-    }
-    else if ($type == 'T') { // is a branch
-      $branch_or_tag['branch_name'] = $tag_name;
-      versioncontrol_insert_branch_operation($branch_or_tag, $items);
-    }
+    versioncontrol_insert_operation($operation, $operation_items);
 
     // Clean up.
     xcvs_exit(0, $lastlog, $summary);
