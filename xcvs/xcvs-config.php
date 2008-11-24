@@ -18,7 +18,7 @@
 $xcvs['drupal_path'] = '/home/username/public_html';
 
 // File location where to store temporary files.
-$xcvs['temp'] = "/tmp";
+$xcvs['temp'] = '/tmp';
 
 // Drupal repository id that this installation of scripts is going to
 // interact with. In order to find out the repository id, go to the
@@ -104,7 +104,7 @@ function xcvs_log_add($filename, $dir, $mode = 'w') {
 
 function xcvs_is_last_directory($logfile, $dir) {
   if (file_exists($logfile)) {
-    $fd = fopen($logfile, "r");
+    $fd = fopen($logfile, 'r');
     $last = fgets($fd);
     fclose($fd);
     return $dir == $last ? TRUE : FALSE;

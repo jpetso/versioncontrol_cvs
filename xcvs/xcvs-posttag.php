@@ -8,31 +8,18 @@
  *
  * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
- * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
+ * Copyright 2007, 2008 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 
 function xcvs_help($cli, $output_stream) {
   fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTVv}\n\n");
 }
 
-function xcvs_exit($status, $lastlog, $summary) {
+function xcvs_exit($status, $lastlog, $summary, $taginfo) {
   @unlink($lastlog);
   @unlink($summary);
+  @unlink($taginfo);
   exit($status);
-}
-
-function xcvs_get_item($action, $file_entry) {
-  if ($file_entry) {
-    list($path, $source_branch, $old, $new) = explode(",", $file_entry);
-
-    return array(
-      'type' => VERSIONCONTROL_ITEM_FILE,
-      'path' => $path,
-      'revision' => ($new != 'NONE') ? $new : $old,
-      // currently unused... do we have a use for the source branch?
-      //'source branch' => ($action == VERSIONCONTROL_ACTION_DELETED) ? NULL : $source_branch,
-    );
-  }
 }
 
 function xcvs_init($argc, $argv) {
@@ -69,6 +56,7 @@ function xcvs_init($argc, $argv) {
   // was invoked with, and that order is the same one as for loginfo.
   $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
   $summary = $tempdir .'/xcvs-summary.'. posix_getpgrp();
+  $taginfo = $tempdir .'/xcvs-taginfo.'. posix_getpgrp();
 
   // Write the tagged/branched items to a temporary log file, one by one.
   while (!empty($argv)) {
@@ -83,80 +71,105 @@ function xcvs_init($argc, $argv) {
   // Once all logs in a multi-directory tagging/branching operation have been
   // gathered, the currently processed directory matches the last processed
   // directory that taginfo was invoked with, which means we've got all the
-  // needed data in the summary file.
+  // needed data in the summary file (and the taginfo file that xcvs-taginfo
+  // has written before).
   if (xcvs_is_last_directory($lastlog, $dir)) {
-    switch ($cvs_op) {
-      case 'add':
-        $action = VERSIONCONTROL_ACTION_ADDED;
-        break;
+    // The taginfo script was nice enough to determine the label type for all
+    // files where the branch or tag was deleted.
+    if ($cvs_op == 'del') {
+      $fd = fopen($taginfo, 'r');
+      if ($fd === FALSE) {
+        fwrite(STDERR, "Error: failed to open taginfo log at $summary.\n");
+        xcvs_exit(5, $lastlog, $summary, $taginfo);
+      }
+      $label_types = array();
 
-      case 'mov':
-        $action = VERSIONCONTROL_ACTION_MOVED;
-        break;
-
-      case 'del':
-        // as $type == '?', we don't know if it's branches or tags,
-        // so let go without asking the Version Control API
-        // TODO: I think we can work around this by logging all branches and tags
-        //       for each item in the database, and afterwards looking them up.
-        $action = VERSIONCONTROL_ACTION_DELETED;
-        xcvs_exit(0, $lastlog, $summary);
-
-      default:
-        fwrite(STDERR, "Error: unknown tag action.\n");
-        xcvs_exit(5, $lastlog, $summary);
+      while (!feof($fd)) {
+        $tag_entry = trim(fgets($fd));
+        list($path, $ltype) = explode(',', $tag_entry);
+        $label_types[$path] = ($ltype == 'N')
+                              ? VERSIONCONTROL_OPERATION_TAG
+                              : VERSIONCONTROL_OPERATION_BRANCH;
+      }
+      fclose($fd);
     }
 
     // Convert the previously written temporary log file
     // to Version Control API's item format.
-    $fd = fopen($summary, "r");
+    $fd = fopen($summary, 'r');
     if ($fd === FALSE) {
       fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
-      xcvs_exit(6, $lastlog, $summary);
+      xcvs_exit(6, $lastlog, $summary, $taginfo);
     }
-    $operation_items = array();
+    $items = array();
 
     while (!feof($fd)) {
       $file_entry = trim(fgets($fd));
-      $item = xcvs_get_item($action, $file_entry);
-      if ($item) {
-        $operation_items[$item['path']] = $item;
+      if (!$file_entry) {
+        continue;
+      }
+      list($path, $source_branch, $old, $new) = explode(',', $file_entry);
+
+      if ($type == 'N') { // is a tag
+        $label_type = VERSIONCONTROL_OPERATION_TAG;
+      }
+      else if ($type == 'T') { // is a branch
+        $label_type = VERSIONCONTROL_OPERATION_BRANCH;
+      }
+
+      if (in_array($cvs_op, array('add', 'mov'))) {
+        $items[VERSIONCONTROL_ACTION_ADDED][$label_type][$path] = array(
+          'type' => VERSIONCONTROL_ITEM_FILE,
+          'path' => $path,
+          'revision' => $new,
+        );
+        // $source_branch is not currently being used by Version Control API.
+      }
+      if (in_array($cvs_op, array('del', 'mov'))) {
+        $item = array(
+          'type' => VERSIONCONTROL_ITEM_FILE,
+          'path' => $path,
+          'revision' => $old,
+        );
+        if ($type == '?') {
+          if (!isset($label_types[$path])) {
+            fwrite(STDERR, "Could not determine the label type for $path. Not recording into database.\n");
+            continue;
+          }
+          $label_type = $label_types[$path];
+        }
+        $items[VERSIONCONTROL_ACTION_DELETED][$label_type][$path] = $item;
       }
     }
     fclose($fd);
 
-    if (empty($operation_items)) {
-      // if nothing is being tagged, we don't need to log anything.
-      xcvs_exit(0, $lastlog, $summary);
+    if (empty($items)) {
+      // If nothing is being tagged, we don't need to log anything.
+      xcvs_exit(0, $lastlog, $summary, $taginfo);
     }
 
-    if ($type == 'N') { // is a tag
-      $type = VERSIONCONTROL_OPERATION_TAG;
-    }
-    else if ($type == 'T') { // is a branch
-      $type = VERSIONCONTROL_OPERATION_BRANCH;
-    }
-    else { // does not happen at the moment (see 'del'), but just to make sure.
-      exit(7);
-    }
+    // All data gathered, now let's insert it into the database.
+    foreach ($items as $action => $items_by_action) {
+      foreach ($items_by_action as $label_type => $operation_items) {
+        $operation = array(
+          'type' => $label_type,
+          'date' => time(),
+          'username' => $username,
+          'repo_id' => $xcvs['repo_id'],
+        );
+        $label = array(
+          'type' => $label_type,
+          'name' => $tag_name,
+          'action' => $action,
+        );
+        $operation['labels'] = array($label);
 
-    $operation = array(
-      'type' => $type,
-      'date' => time(),
-      'username' => $username,
-      'repo_id' => $xcvs['repo_id'],
-    );
-    $label = array(
-      'type' => $type,
-      'name' => $tag_name,
-      'action' => $action,
-    );
-    $operation['labels'] = array($label);
-
-    versioncontrol_insert_operation($operation, $operation_items);
+        versioncontrol_insert_operation($operation, $operation_items);
+      }
+    }
 
     // Clean up.
-    xcvs_exit(0, $lastlog, $summary);
+    xcvs_exit(0, $lastlog, $summary, $taginfo);
   }
   exit(0);
 }
