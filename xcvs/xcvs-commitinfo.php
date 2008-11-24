@@ -57,6 +57,68 @@ function xcvs_get_operation_item($filename, $dir) {
   return array($repository_path, $action);
 }
 
+/**
+ * See if the current commit has a sticky tag, and if so, add it as
+ * operation label so that it can be validated to be a valid branch.
+ */
+function xcvs_commit_labels() {
+  if (!is_dir('CVS')) {
+    fwrite(STDERR, "** ERROR: No local CVS directory during commit, aborting.\n\n");
+    exit(5);
+  }
+  $labels = array();
+
+  if (file_exists('CVS/Tag')) {
+    // There's a sticky tag, validate it.
+    $sticky_tag = '';
+    $tag_file = trim(file_get_contents('CVS/Tag'));
+    if (!empty($tag_file)) {
+      // Get the sticky tag for this commit: strip off the leading 'T or N'.
+      $sticky_tag = preg_replace('@^(T|N)@', '', $tag_file);
+    }
+    if (!empty($sticky_tag)) {
+      $labels[$sticky_tag] = array(
+        'type' => VERSIONCONTROL_OPERATION_BRANCH,
+        'name' => $sticky_tag,
+        'action' => VERSIONCONTROL_ACTION_MODIFIED,
+      );
+    }
+  }
+  // To be extra paranoid, check everything in CVS/Entries, too.
+  if (file_exists('CVS/Entries')) {
+    $entries = file('CVS/Entries');
+
+    if (!empty($entries)) {
+      foreach ($entries as $entry) {
+        $parts = explode('/', trim($entry));
+        if (empty($parts[5])) {
+          continue;
+        }
+        $sticky_tag = preg_replace('@^(T|N)@', '', trim($parts[5]));
+
+        if (isset($labels[$sticky_tag])) {
+          continue;
+        }
+        $labels[$sticky_tag] = array(
+          'type' => VERSIONCONTROL_OPERATION_BRANCH,
+          'name' => $sticky_tag,
+          'action' => VERSIONCONTROL_ACTION_MODIFIED,
+        );
+      }
+    }
+  }
+  $labels = array_values($labels);
+
+  if (empty($labels)) {
+    $labels[] = array(
+      'type' => VERSIONCONTROL_OPERATION_BRANCH,
+      'name' => 'HEAD',
+      'action' => VERSIONCONTROL_ACTION_MODIFIED,
+    );
+  }
+  return $labels;
+}
+
 function xcvs_init($argc, $argv) {
   $this_file = array_shift($argv);   // argv[0]
 
@@ -92,9 +154,7 @@ function xcvs_init($argc, $argv) {
       'type' => VERSIONCONTROL_OPERATION_COMMIT,
       'repo_id' => $xcvs['repo_id'],
       'username' => $username,
-      // CVS doesn't tell us the branch at this point, so we need to
-      // pass out on that for the time being.
-      'labels' => array(),
+      'labels' => xcvs_commit_labels(),
     );
 
     $operation_items = array();
@@ -107,7 +167,7 @@ function xcvs_init($argc, $argv) {
     // Fail and print out error messages if commit access has been denied.
     if (!$access) {
       fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
-      exit(5);
+      exit(6);
     }
   }
   // If we get as far as this, the commit may happen.
