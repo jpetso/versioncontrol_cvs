@@ -316,10 +316,12 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
           'revision' => versioncontrol_cvs_get_previous_revision_number($file_revision->revision),
         ),
       ),
+      'line_changes' => array(
+        'added' => $file_revision->lines_added,
+        'removed' => $file_revision->lines_removed,
+      ),
       'cvs_specific' => array(
         'file_revision' => $file_revision, // temporary
-        'lines_added' => $file_revision->lines_added,
-        'lines_removed' => $file_revision->lines_removed,
       ),
     );
 

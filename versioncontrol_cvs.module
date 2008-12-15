@@ -242,45 +242,6 @@ function _versioncontrol_cvs_fix_commit_operation_items($operation, &$operation_
 }
 
 /**
- * Implementation of [versioncontrol_backend]_operation():
- * Manage (insert or delete) additional commit/tag/branch data in the database.
- */
-// TODO: $item['cvs_specific'] doesn't exist anymore. (should it? hm.)
-//       On the other hand, I think it survives long enough to get through
-//       to this function nevertheless, but that's probably rather luck than
-//       intention. Figure out what to do with backend specific additions,
-//       and move line change counts into the API module wholesale (as optional
-//       feature for backends).
-function versioncontrol_cvs_operation($op, $operation, $operation_items) {
-  if ($operation['type'] == VERSIONCONTROL_OPERATION_COMMIT) {
-    switch ($op) {
-      case 'insert':
-        foreach ($operation_items as $path => $item) {
-          db_query(
-            "INSERT INTO {versioncontrol_cvs_item_revisions}
-              (item_revision_id, lines_added, lines_removed)
-              VALUES (%d, %d, %d)",
-            $item['item_revision_id'], $item['cvs_specific']['lines_added'],
-            $item['cvs_specific']['lines_removed']
-          );
-        }
-        break;
-
-      case 'delete':
-        $result = db_query('SELECT item_revision_id
-                            FROM {versioncontrol_operation_items}
-                            WHERE vc_op_id = %d', $operation['vc_op_id']);
-
-        while ($item_revision_id = db_result($result)) {
-          db_query('DELETE FROM {versioncontrol_cvs_item_revisions}
-                    WHERE item_revision_id = %d', $item_revision_id);
-        }
-        break;
-    }
-  }
-}
-
-/**
  * Implementation of [versioncontrol_backend]_account():
  * Manage (insert, update or delete) additional CVS user account data
  * in the database.
