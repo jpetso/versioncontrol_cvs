@@ -22,16 +22,11 @@
  *   failed for whatever reason.
  */
 function _versioncontrol_cvs_log_update_repository(&$repository) {
-  $root = escapeshellcmd($repository['root']);
-
-  // If the repository is a remote one, log in before performing any fetches
-  if (strpos(':pserver:', $root) !== FALSE) {
-    exec("cvs -d $root login", $output_lines, $return_status);
-    if ($return_status) {
-      drupal_set_message(t('Failed to log in to CVS repository, could not fetch new repository logs.'), 'error');
-      return FALSE;
-    }
+  if (!_versioncontrol_cvs_repository_login($repository)) {
+    drupal_set_message(t('Failed to log in to CVS repository, could not fetch new repository logs.'), 'error');
+    return FALSE;
   }
+  $root = escapeshellcmd($repository['root']);
 
   // Prepare the "since when" time argument for CVS, and remember the
   // current time for the "updated" value that is stored later on.

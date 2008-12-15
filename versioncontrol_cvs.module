@@ -119,6 +119,27 @@ function versioncontrol_cvs_cron() {
 
 
 /**
+ * Perform a repository login if necessary, which is the case for pserver
+ * access methods. Needs to be called once before the 'cvs' executable
+ * is invoked.
+ *
+ * @return
+ *   TRUE logging in was successful, or FALSE otherwise. If logging in did not
+ *   succeed, any subsequent 'cvs' invocations will fail, so make sure you
+ *   check the result value.
+ */
+function _versioncontrol_cvs_repository_login($repository) {
+  if (strpos(':pserver:', $root) !== FALSE) {
+    $root = escapeshellcmd($repository['root']);
+    exec("cvs -d $root login", $output_lines, $return_status);
+    if ($return_status) {
+      return FALSE;
+    }
+  }
+  return TRUE;
+}
+
+/**
  * Implementation of [versioncontrol_backend]_get_selected_label_from_operation():
  * Retrieve the tag or branch that applied to that item during the given
  * operation. The result of this function will be used for the selected label
