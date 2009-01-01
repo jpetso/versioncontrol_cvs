@@ -22,246 +22,29 @@
  *   failed for whatever reason.
  */
 function _versioncontrol_cvs_log_update_repository(&$repository) {
-  if (!_versioncontrol_cvs_repository_login($repository)) {
-    drupal_set_message(t('Failed to log in to CVS repository, could not fetch new repository logs.'), 'error');
-    return FALSE;
-  }
-  $root = escapeshellcmd($repository['root']);
-
-  // Prepare the "since when" time argument for CVS, and remember the
-  // current time for the "updated" value that is stored later on.
-  $date = ($repository['cvs_specific']['updated'] > 0)
-          ? '-d ">='. gmdate('Y-m-d H:i:s', $repository['cvs_specific']['updated']) .' UTC"'
-          : '';
+  // Remember the current time for the "updated" value that is stored later on.
   $date_updated = time();
 
-  // Determine which paths will be queried for logs.
-  $subdirs = $repository['cvs_specific']['modules'];
-
-  // If no paths are given, fetch logs for the whole repository.
-  if (empty($subdirs)) {
-    $subdirs = array('.');
-  }
-  $file_revisions = array();
-
-  // Call CVS in order to get the raw logs.
-  foreach ($subdirs as $subdir) {
-    $subdir = escapeshellcmd($subdir);
-
-    if (variable_get('versioncontrol_cvs_log_use_file', 1)) {
-      $temp_file = file_directory_temp() .'/cvs-'. mt_rand();
-      exec("cvs -qnf -d $root rlog -S $date $subdir > $temp_file");
-      $logs = fopen($temp_file, 'r');
-    }
-    else {
-      exec("cvs -qnf -d $root rlog -S $date $subdir", $logs);
-      reset($logs); // reset the array pointer, so that we can use next()
-    }
-    watchdog('special', "cvs -qnf -d $root rlog -S $date $subdir");
-
-    // Parse the info from the raw output.
-    _versioncontrol_cvs_log_parse($repository, $logs, $file_revisions);
-
-    if (variable_get('versioncontrol_cvs_log_use_file', 1)) {
-      fclose($logs);
-      unlink($temp_file);
-    }
-    $updated = TRUE;
+  $file_revisions = cvslib_log(
+    $repository['root'], $repository['cvs_specific']['modules'],
+    array('date_lower' => $repository['cvs_specific']['updated'])
+  );
+  if ($file_revisions === FALSE) {
+    drupal_set_message(cvslib_last_error_message());
+    return FALSE;
   }
 
-  if ($updated) {
-    // Having retrieved the file revisions, insert those into the database
-    // as Version Control API commits.
-    _versioncontrol_cvs_log_process($repository, $file_revisions);
-    $repository['cvs_specific']['updated'] = $date_updated;
+  // Having retrieved the file revisions, insert those into the database
+  // as Version Control API commits.
+  _versioncontrol_cvs_log_process($repository, $file_revisions);
+  $repository['cvs_specific']['updated'] = $date_updated;
 
-    // Everything's done, remember the time when we updated the log (= now).
-    db_query('UPDATE {versioncontrol_cvs_repositories}
-              SET updated = %d WHERE repo_id = %d',
-              $repository['cvs_specific']['updated'], $repository['repo_id']);
-  }
+  // Everything's done, remember the time when we updated the log (= now).
+  db_query('UPDATE {versioncontrol_cvs_repositories}
+            SET updated = %d WHERE repo_id = %d',
+            $repository['cvs_specific']['updated'], $repository['repo_id']);
+
   return TRUE;
-}
-
-/**
- * Get the part of a string that is right to the first colon,
- * trimming spaces on both input and result text.
- */
-function _versioncontrol_cvs_explode($text, $delim = ':') {
-  $parts = explode($delim, $text, 2);
-  return trim($parts[1]);
-}
-
-/**
- * Parse the logs into a list of file revision objects, so that they
- * can be processed more easily.
- *
- * @param $repository
- *   The repository array, as given by the Version Control API.
- * @param $logs
- *   Either an array containing all the output lines (if the output was
- *   directly read by exec()) or a file handle of the temporary file
- *   that the output was written to.
- * @param $file_revisions
- *   An array that will be filled with a simple, flat list of
- *   file revision objects. Each object has the following properties:
- *
- *   - revision: The revision number (a string, e.g. '1.1' or '1.59.2.3').
- *   - date: The time of the revision, as Unix timestamp.
- *   - username: The CVS username of the committer.
- *   - dead: TRUE if the file revision is in the "dead" (deleted) state,
- *       or FALSE if it currently exists in the repository.
- *   - lines_added: An integer that specifies how many lines have been added
- *       in this revision.
- *   - lines_removed: An integer that specifies how many lines have been added
- *       in this revision.
- *   - commitid: Optional property, may exist in more recent versions of CVS.
- *       (It seems to have been introduced in 2005 or something.) If given,
- *       this is a string which is the same for all file revisions in a commit.
- *   - message: The commit message (a string with possible line breaks).
- *   - branch: The branch that this file revision was committed to,
- *       as string containing the name of the branch.
- */
-function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
-  // If the log was retrieved by taking the return value of exec(), we've
-  // got and array and navigate it via next(). If we stored the log in a
-  // temporary file, $logs is a file handle that we need to fgets() instead.
-  $next = is_array($logs) ? 'next' : 'fgets';
-
-  // Remove prefixes like ":pserver:" from the repository root.
-  $root_path = preg_replace('|[^/]*(/.+)$|', '\1', $repository['root']);
-
-  while (($line = $next($logs)) !== FALSE) {
-    $matches_found = preg_match('/^RCS file: (.+)$/', $line, $matches);
-    if (!$matches_found) {
-      continue;
-    }
-    $file = new stdClass();
-
-    // Remove the root path and the trailing ",v".
-    $file->path = trim(preg_replace("@^$root_path(.*)(,v)$@", '\1', $matches[1]));
-    // Remove a possible "Attic/" directory that exists if the file
-    // is currently in a "dead" state.
-    $file->path = preg_replace('@^(.*/)Attic/(.*)$@', '\1\2', $file->path);
-
-    $next($logs); // head - not used
-    $next($logs); // branch - not used
-    $next($logs); // locks - not used
-    $next($logs); // access - not used
-
-    // Retrieve branches and tags ("symbolic names" is the common term here).
-    if (trim($next($logs)) == 'symbolic names:') {
-      $file->branches = array();
-      $file->tags = array();
-
-      while (TRUE) {
-        $line = $next($logs);
-
-        if (preg_match('/^keyword substitution: (.*)$/', $line, $matches)) {
-          // $matches[1] could be stored as $file->keyword, but is not used.
-          break; // no branches and tags anymore, go on with the next steps
-        }
-        $parts = explode(':', trim($line)); // e.g. "DRUPAL-5--2-0: 1.4"
-
-        // If the revision ends with "0.N", we know this is a branch.
-        if (preg_match('/\.0\.\d+$/', trim($parts[1]))) {
-          // When saving the revision number for branches, we need to
-          // move the final N into the place of the '.0' when we
-          // save it so that we can compare revisions numbers against
-          // this value and match them to the right branch.
-          $branch_prefix = preg_replace('/^(.+?)\.\d+(\.\d+)$/', '\1\2', trim($parts[1]));
-          $file->branches[$branch_prefix] = trim($parts[0]);
-        }
-        else {
-          // There's no magic for revision numbers on non-branch tags.
-          // However, since multiple tags can point to the same
-          // revision, here we want to key on the tag name.
-          $file->tags[trim($parts[0])] = trim($parts[1]);
-        }
-      }
-    }
-
-    // Next line looks like "total revisions: 4;     selected revisions: 2"
-    $parts = explode(';', $next($logs));
-    $file->number_revisions = _versioncontrol_cvs_explode($parts[1]); // "2" in the above example
-
-    // Skip until "description" (which should be the next line anyways, usually)
-    while (trim($next($logs)) != "description:") {
-    }
-    $separator = $next($logs); // like, "----------------------------"
-
-    for ($i = 0; $i < $file->number_revisions; $i++) {
-      $file_revision = new stdClass();
-      $file_revision->path = $file->path;
-
-      $parts = explode(' ', $next($logs)); // that line is like "revision 1.9"
-      $file_revision->revision = trim($parts[1]);
-
-      // Example line (commitid is only in more recent versions of CVS):
-      // date: 2007-10-02 20:44:15 +0100;  author: jakob;  state: Exp;  lines: +2 -1;  commitid: vaXgz7afKtx3m3As;
-      $line = $next($logs);
-      $parts = explode(';', $line);
-      $file_revision->date = strtotime(_versioncontrol_cvs_explode($parts[0]));
-      $file_revision->username = _versioncontrol_cvs_explode($parts[1]);
-
-      // "state" is "Exp" or "dead" (in case no low-level modifications
-      // involving 'rcs' were performed), so store this as boolean.
-      $file_revision->dead = (_versioncontrol_cvs_explode($parts[2]) == 'dead');
-
-      // "lines: (...)" from the above example line only appears
-      // for revisions other than 1.1.
-      $lines = array();
-      if ($file_revision->revision !== '1.1' && $file_revision->dead == FALSE) {
-        $lines = explode(' ', _versioncontrol_cvs_explode($parts[3]));
-      }
-      $file_revision->lines_added = empty($lines) ? 0 : abs($lines[0]);
-      $file_revision->lines_removed = empty($lines) ? 0 : abs($lines[1]);
-
-      // commitid is only in more recent versions of CVS -
-      // use it if it's given, or fall back to single-file commits if not.
-      if (preg_match('/^.+;\s+commitid: ([^;]+).*$/', $line, $matches)) {
-        $file_revision->commitid = $matches[1];
-      }
-
-      // The next line is either "branches: (...)"
-      // or the first line of the commit message.
-      $line = $next($logs);
-      $message = '';
-
-      if (substr($line, 0, 9) != 'branches:') {
-        // Not sure if $next() always includes linebreaks or not -> trim.
-        $message = trim($line) ."\n";
-      }
-
-      // After that, we have either more message lines or the end of the message.
-      while (($line = $next($logs)) != $separator && trim($line) != "=============================================================================") {
-        $message .= "$line\n";
-      }
-      $file_revision->message = trim($message);
-
-      // Retrieve the branch of this revision.
-      $parts = explode('.', $file_revision->revision);
-
-      if (empty($file->branches) || count($parts) <= 2) {
-        $file_revision->branch = 'HEAD';
-      }
-      else {
-        // Let's say we start with "1.59.2.7".
-        array_pop($parts); // "1.59.2" is the only possible branch prefix
-        $branch_prefix = implode('.', $parts);
-
-        if (isset($file->branches[$branch_prefix])) {
-          // Get the name of the branch that maps to this branch prefix.
-          $file_revision->branch = $file->branches[$branch_prefix];
-        }
-        else { // should not happen, but who knows... maybe with deleted branches?
-          $file_revision->branch = ''; // "branch is unknown"
-        }
-      }
-
-      $file_revisions[] = $file_revision;
-    } // loop to the next revision of this file
-  } // loop to the next file
 }
 
 /**
@@ -271,8 +54,7 @@ function _versioncontrol_cvs_log_parse($repository, &$logs, &$file_revisions) {
  * @param $repository
  *   The repository array, as given by the Version Control API.
  * @param $file_revisions
- *   A simple, flat list of file revision objects - the combined set of
- *   return values from _versioncontrol_cvs_log_parse().
+ *   A simple, flat list of file revision objects, as returned by cvslib_log().
  */
 function _versioncontrol_cvs_log_process($repository, $file_revisions) {
   $operation_items_by_commitid = array();
@@ -284,7 +66,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
       "SELECT COUNT(*)
        FROM {versioncontrol_item_revisions} ir
           INNER JOIN {versioncontrol_operation_items} opitem
-            ON ir.vc_op_id = opitem.vc_op_id
+            ON ir.item_revision_id = opitem.item_revision_id
           INNER JOIN {versioncontrol_operations} op
             ON opitem.vc_op_id = op.vc_op_id
        WHERE op.repo_id = %d AND op.type = %d
@@ -380,7 +162,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
       _versioncontrol_cvs_fix_commit_operation_items(
         $commit_info->operation, $commit_info->operation_items
       );
-      versioncontrol_insert_operations(
+      versioncontrol_insert_operation(
         $commit_info->operation, $commit_info->operation_items
       );
     }

@@ -14,6 +14,8 @@
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);
 define('VERSIONCONTROL_CVS_UPDATE_XCVS', 1);
 
+// The generic, Drupal-agnostic CVS helper library.
+include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/cvslib/cvslib.inc');
 // The admin and user edit pages.
 include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.admin.inc');
 
@@ -117,27 +119,6 @@ function versioncontrol_cvs_cron() {
   }
 }
 
-
-/**
- * Perform a repository login if necessary, which is the case for pserver
- * access methods. Needs to be called once before the 'cvs' executable
- * is invoked.
- *
- * @return
- *   TRUE logging in was successful, or FALSE otherwise. If logging in did not
- *   succeed, any subsequent 'cvs' invocations will fail, so make sure you
- *   check the result value.
- */
-function _versioncontrol_cvs_repository_login($repository) {
-  if (strpos(':pserver:', $root) !== FALSE) {
-    $root = escapeshellcmd($repository['root']);
-    exec("cvs -d $root login", $output_lines, $return_status);
-    if ($return_status) {
-      return FALSE;
-    }
-  }
-  return TRUE;
-}
 
 /**
  * Implementation of [versioncontrol_backend]_get_selected_label_from_operation():
@@ -246,7 +227,7 @@ function _versioncontrol_cvs_fix_commit_operation_items($operation, &$operation_
       "SELECT COUNT(*)
         FROM {versioncontrol_item_revisions} ir
           INNER JOIN {versioncontrol_operation_items} opitem
-            ON ir.vc_op_id = opitem.vc_op_id
+            ON ir.item_revision_id = opitem.item_revision_id
           INNER JOIN {versioncontrol_operations} op
             ON opitem.vc_op_id = op.vc_op_id
         WHERE op.repo_id = %d AND op.type = %d

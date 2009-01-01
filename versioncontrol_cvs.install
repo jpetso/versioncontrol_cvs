@@ -369,3 +369,21 @@ function versioncontrol_cvs_update_5() {
 
   return $ret;
 }
+
+/**
+ * Update 6: Get rid of the "Use file to store log" option - no one is probably
+ *   going to disable this anyways, and if really they want to, they can do so
+ *   by implementing the cvslib_local_use_file() function used in cvslib.inc.
+ *   (Background of this change: a versioncontrol_cvs specific variable doesn't
+ *   belong in a Drupal-agnostic helper library like cvslib.inc.)
+ */
+function versioncontrol_cvs_update_6() {
+  $ret = array();
+  variable_del('versioncontrol_cvs_log_use_file');
+
+  $ret[] = array(
+    'success' => TRUE,
+    'query' => 'Removed the "versioncontrol_cvs_log_use_file" variable (assuming it existed at all). The CVS backend now always uses a temporary file in order to retrieve the output of "cvs" invocations.',
+  );
+  return $ret;
+}
