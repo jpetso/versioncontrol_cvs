@@ -220,7 +220,14 @@ function _cvslib_fix_path($path) {
  *   An array that will be filled with a simple, flat list of
  *   file revision objects. Each object has the following properties:
  *
- *   [todo]
+ *   - path: The absolute path in the repository, starting with '/'.
+ *   - directory: TRUE if the item is a directory, FALSE if it's a file.
+ *   - revision: The revision number (a string, e.g. '1.1' or '1.59.2.3').
+ *       This is only set if $item->directory is FALSE.
+ *   - date: The time when the above revision was committed, as Unix timestamp.
+ *       This is only set if $item->directory is FALSE.
+ *   - binary: TRUE if the file is marked as binary, or FALSE if not.
+ *       This is only set if $item->directory is FALSE.
  *
  *   If any errors occurred for any of the given items, boolean FALSE will be
  *   returned - remember to check the return value with "===" or "!==".
@@ -318,6 +325,7 @@ function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
       $item->directory = TRUE;
     }
     else {
+      $item->directory = FALSE;
       $item->revision = $matches[3];
       $item->date = strtotime($matches[4]);
       $item->binary = (strpos($matches[5], '-kb') !== FALSE);
