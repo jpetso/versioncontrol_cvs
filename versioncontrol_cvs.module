@@ -14,8 +14,6 @@
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);
 define('VERSIONCONTROL_CVS_UPDATE_XCVS', 1);
 
-// The generic, Drupal-agnostic CVS helper library.
-include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/cvslib/cvslib.inc');
 // The admin and user edit pages.
 include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_cvs.admin.inc');
 
@@ -119,6 +117,85 @@ function versioncontrol_cvs_cron() {
   }
 }
 
+/**
+ * Include the cvslib.inc helper library so that its functions can be called.
+ */
+function _versioncontrol_cvs_init_cvslib() {
+  include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/cvslib/cvslib.inc');
+}
+
+
+/**
+ * Implementation of [versioncontrol_backend]_get_item():
+ * Try to retrieve a given item in a repository.
+ */
+function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
+  _versioncontrol_cvs_init_cvslib();
+
+  $label = array(
+    'name' => 'HEAD',
+    'type' => VERSIONCONTROL_OPERATION_BRANCH,
+  );
+  $directory_item = array(
+    'path' => $path,
+    'revision' => '',
+    'type' => VERSIONCONTROL_ITEM_DIRECTORY,
+  );
+
+  // Special casing the root directory, because it's always the same.
+  if ($path == '/') {
+    return array('item' => $directory_item, 'selected_label' => $label);
+  }
+
+  // Use ls to see whether the item is a directory.
+  $ls_constraints = array(
+    'show_dead_files' => TRUE,
+    'show_empty_dirs' => TRUE,
+  )
+  if (!empty($revision)) {
+    $ls_constraints['revision'] = $revision;
+  }
+  $items = cvslib_ls($repository_root, dirname($item_path), $ls_constraints);
+
+  if (!isset($items[$path])) {
+    return NULL; // does not exist (at least not at the given revision)
+  }
+  else if ($items[$path]->directory) {
+    return array('item' => $directory_item, 'selected_label' => $label);
+  }
+  else {
+    // The item exists and is a file. We want more info (dead or not, label)
+    // so let's retrieve further info with cvs log.
+    $file_revisions = cvslib_log($repository['root'], $path, array(
+      'revision' => empty($revision) ? 'HEAD.' : $revision,
+      'recursive' => FALSE,
+    ));
+    if ($file_revisions === FALSE || empty($file_revisions)) {
+      return NULL;
+    }
+    $file_revision = reset($file_revisions); // first array element
+
+    if ($file_revision->path != $path) {
+      // Should not happen, but let's avoid subtle bugs and race conditions.
+      return NULL;
+    }
+
+    $item = array(
+      'path' => $file_revision->path,
+      'revision' => $file_revision->revision,
+      'type' => $file_revision->dead
+                ? VERSIONCONTROL_ITEM_FILE_DELETED
+                : VERSIONCONTROL_ITEM_FILE,
+    );
+    if (empty($file_revision->branch)) {
+      $label = NULL; // should not happen except in unknown edge cases
+    }
+    else {
+      $label['name'] = $file_revision->branch;
+    }
+    return array('item' => $item, 'selected_label' => $label);
+  }
+}
 
 /**
  * Implementation of [versioncontrol_backend]_get_selected_label_from_operation():

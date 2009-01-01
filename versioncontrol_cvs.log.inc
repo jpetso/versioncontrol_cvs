@@ -22,6 +22,8 @@
  *   failed for whatever reason.
  */
 function _versioncontrol_cvs_log_update_repository(&$repository) {
+  _versioncontrol_cvs_init_cvslib();
+
   // Remember the current time for the "updated" value that is stored later on.
   $date_updated = time();
 

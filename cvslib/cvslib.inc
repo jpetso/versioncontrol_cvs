@@ -200,6 +200,21 @@ function _cvslib_fix_path($path) {
  *   corresponding items, or for all of their descendant files if the path
  *   denotes a directory. Both paths starting with a slash ("/") and paths
  *   omitting it are accepted as input.
+ * @param $constraints
+ *   An array of filter constraints that specify which repository items should
+ *   be retrieved. The following array elements are accepted (all are optional):
+ *
+ *   - 'recursive': By default, only direct child items of the given directory
+ *        path are retrieved. If set to TRUE, all descendant items of the given
+ *        directory path are retrieved. If the item path refers to a file item,
+ *        this option has no effect whatsoever.
+ *   - 'show_dead_files': By default, dead (= deleted) files will not be
+ *        retrieved. If set to TRUE, they will.
+ *   - 'show_empty_dirs': By default, empty directories will not be retrieved.
+ *        If set to TRUE, even empty directories will show up.
+ *   - 'date': Retrieve files at a specific date (given as Unix timestamp).
+ *   - 'revision': Retrieve files with a given revision number or on a given
+ *        branch/tag (the latest files on a branch are being retrieved).
  *
  * @return
  *   An array that will be filled with a simple, flat list of
@@ -210,18 +225,36 @@ function _cvslib_fix_path($path) {
  *   If any errors occurred for any of the given items, boolean FALSE will be
  *   returned - remember to check the return value with "===" or "!==".
  */
-/*function cvslib_ls($repository_root, $item_path) {
+function cvslib_ls($repository_root, $item_path, $constraints = array()) {
   if (!_cvslib_repository_login($repository_root)) {
     return FALSE;
   }
+
   $cmd = array(
     'cvs',
     '-qnf', // standard global arguments: quiet, no disk changes, no ~/.cvsrc file
     '-d '. escapeshellcmd($repository_root),
     'rls',
-    '-lRd',
-    _cvslib_fix_path($path),
+    '-e', // CVS/Entries output format, required by the parser in here
   );
+  if (!empty($constraints['recursive'])) {
+    $cmd[] = '-R';
+  }
+  if (!empty($constraints['show_dead_files'])) {
+    $cmd[] = '-d';
+  }
+  if (empty($constraints['show_empty_directories'])) {
+    $cmd[] = '-P';
+  }
+  if (!empty($constraints['revision'])) {
+    $cmd[] = '-r'. $constraints['revision'];
+  }
+  if (!empty($constraints['date'])) {
+    $cmd[] = '-D @'. $constraints['date'];
+  }
+  $relative_item_path = _cvslib_fix_path($item_path);
+  $cmd[] = $relative_item_path;
+
   $tempfiles = _cvslib_add_output_pipes($cmd);
   $entries = _cvslib_exec($cmd, $tempfiles);
 
@@ -230,7 +263,7 @@ function _cvslib_fix_path($path) {
   }
 
   // Parse the info from the raw output.
-  $file_revisions = _cvslib_parse_ls($repository_root, $entries);
+  $items = _cvslib_parse_ls($repository_root, $entries, $relative_item_path);
 
   // Close the stdout file and delete both stdout and stderr output.
   if (is_resource($entries)) {
@@ -238,21 +271,62 @@ function _cvslib_fix_path($path) {
   }
   _cvslib_delete_temporary_files($tempfiles);
 
-  return $file_revisions;
+  return $items;
 }
 
-function _cvslib_parse_ls($repository_root, $entries) {
+function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
   // If the log was retrieved by taking the return value of exec(), we've
   // got and array and navigate it via next(). If we stored the log in a
   // temporary file, $entries is a file handle that we need to fgets() instead.
   $next = is_array($entries) ? 'next' : 'fgets';
 
-  $file_revisions = array();
+  $context = (($relative_item_path == '.') ? '/' : ('/'. $relative_item_path .'/'));
+  $items = array();
 
-  /// TODO: implement
+  while (($line = $next($logs)) !== FALSE) {
+    if (empty($line)) {
+      continue;
+    }
 
-  return $file_revisions;
-}*/
+    // We can't use 'cvs -l' because it cuts off long revision numbers, e.g.
+    // "---- 2008-06-11 21:18:39 +0200 1.258.2.2+      devel.module"
+    //
+    // So let's use the CVS/Entries format ('-e' option), which has the
+    // drawback of not displaying whether a file is dead or not.
+    //
+    // Format (when used with rls, which lacks sticky tag confusion and stuff):
+    //   "D/$path////" for directories
+    //   "/$path/$revision/$formatted_local_time/$flags/" for files
+
+    $matches_found = preg_match("@^(D?)/(.+)/([\d\.]*)/([^/]*)/([a-z\-]*)/$@", $line, $matches);
+
+    if (!$matches_found) {
+      // No matches means we've probably run into a directory context line,
+      // e.g. ".:" for the root directory or "contributions/modules:" for a
+      // regular one.
+      $matches_found = preg_match("@^(.+):$@", $line, $matches);
+      if ($matches_found) {
+        $context = (($matches[1] == '.') ? '/' : ('/'. $matches[1] .'/'));
+      }
+      continue;
+    }
+
+    $item = new stdClass();
+    $item->path = $context . $matches[2];
+
+    if ($matches[1] == 'D') {
+      $item->directory = TRUE;
+    }
+    else {
+      $item->revision = $matches[3];
+      $item->date = strtotime($matches[4]);
+      $item->binary = (strpos($matches[5], '-kb') !== FALSE);
+    }
+    $items[$item->path] = $item;
+  }
+
+  return $items;
+}
 
 
 /**
@@ -275,10 +349,30 @@ function _cvslib_parse_ls($repository_root, $entries) {
  *   An array of filter constraints that specify which file revisions should
  *   be retrieved. The following array elements are accepted (all are optional):
  *
+ *   - 'recursive': By default, file revisions for all descendant files of the
+ *        given directory path will be retrieved. If set to FALSE, only direct
+ *        child items of the given directory path are retrieved. If the item
+ *        path refers to a file item, this option has no effect whatsoever.
+ *   - 'show_dead_files': By default, dead (= deleted) files will be retrieved.
+ *        If set to FALSE, they won't.
+ *   - 'date': Retrieve the latest revision(s) before a specific date
+ *        (given as Unix timestamp). This means there will exactly be one
+ *        file revision for each file item that matches the other filters.
+ *        Cannot be combined with 'date_lower' and 'date_upper'.
  *   - 'date_lower': A Unix timestamp. If given, no file revisions will be
  *        retrieved that were performed earlier than this lower bound.
  *   - 'date_upper': A Unix timestamp. If given, no file revisions will be
  *        retrieved that were performed later than this upper bound.
+ *   - 'revision': The revision or range of revisions that should be matched.
+ *        This (string) option corresponds to the "-r" option of "cvs rlog",
+ *        so have fun inspecting "cvs --help rlog" for the full documentation.
+ *        Commonly used values:
+ *        - "1.14" for a single revision with that revision number.
+ *        - "TAGNAME" or "BRANCHNAME." for the (last) revision(s) on that
+ *          branch or tag. In order to have HEAD treated as normal branch,
+ *          this function accepts "HEAD." as last revision on HEAD, and "HEAD"
+ *          as the whole main branch. (This differs from the command line,
+ *          where "HEAD." doesn't work and "HEAD" is treated as tag.)
  *
  * @return
  *   An array that will be filled with a simple, flat list of
@@ -300,6 +394,8 @@ function _cvslib_parse_ls($repository_root, $entries) {
  *   - message: The commit message (a string with possible line breaks).
  *   - branch: The branch that this file revision was committed to,
  *       as string containing the name of the branch.
+ *   - tags: A list of names of the tags that are assigned to this specific
+ *       file revision.
  *
  *   If any errors occurred for any of the given items, boolean FALSE will be
  *   returned - remember to check the return value with "===" or "!==".
@@ -318,6 +414,9 @@ function cvslib_log($repository_root, $item_paths = '.', $constraints = array())
   $filter_args = array();
 
   // Prepare the date filter argument.
+  if (isset($constraints['date'])) {
+    $filter_args[] = '-d @'. $constraints['date'];
+  }
   if (isset($constraints['date_lower']) && !isset($constraints['date_upper'])) {
     $filter_args[] = '-d ">=@'. $constraints['date_lower'] .'"';
   }
@@ -327,6 +426,21 @@ function cvslib_log($repository_root, $item_paths = '.', $constraints = array())
   else if (isset($constraints['date_lower']) && isset($constraints['date_upper'])) {
     $filter_args[] = '-d "@'. $constraints['date_lower']
       .'<=@'. $constraints['date_upper'] .'"';
+  }
+
+  // Other filter arguments.
+  if (isset($constraints['recursive']) && $constraints['recursive'] == FALSE) {
+    $filter_args[] = '-l'; // "Local directory only, no recursion."
+  }
+  if (isset($constraints['show_dead_files']) && $constraints['show_dead_files'] == FALSE) {
+    $filter_args[] = '-s Exp'; // "Exp" is the opposite of "dead"
+  }
+  if (isset($constraints['revision']) && $constraints['revision'] != 'HEAD') {
+    // Treating "HEAD" as branch, as mentioned in the apidox above.
+    if ($constraints['revision'] == 'HEAD.') {
+      $constraints['revision'] = 'HEAD';
+    }
+    $filter_args[] = '-r'. $constraints['revision'];
   }
 
   // Call CVS in order to get the raw logs.
@@ -399,6 +513,10 @@ function _cvslib_parse_log($repository_root, &$logs) {
   $file_revisions = array();
 
   while (($line = $next($logs)) !== FALSE) {
+    if (empty($line)) {
+      continue;
+    }
+
     $matches_found = preg_match('/^RCS file: (.+)$/', $line, $matches);
     if (!$matches_found) {
       continue;
@@ -523,6 +641,15 @@ function _cvslib_parse_log($repository_root, &$logs) {
         }
         else { // should not happen, but who knows... maybe with deleted branches?
           $file_revision->branch = ''; // "branch is unknown"
+        }
+      }
+
+      // Store the tags that are assigned to this file revision.
+      $file_revision->tags = array();
+
+      foreach ($file->tags as $tag_name => $revision) {
+        if ($revision == $file_revision->revision) {
+          $file_revision->tags[] = $tag_name;
         }
       }
 
