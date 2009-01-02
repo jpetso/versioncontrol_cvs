@@ -21,10 +21,10 @@ if (!function_exists('file_directory_temp')) {
   }
 }
 if (!function_exists('t')) {
-  function t($message) {
+  function t($message, $replacements) {
     return function_exists('cvslib_local_translate')
-      ? cvslib_local_translate($message)
-      : $message;
+      ? cvslib_local_translate($message, $replacements)
+      : strtr($message, $replacements);
   }
 }
 
@@ -68,13 +68,14 @@ function _cvslib_repository_login($repository_root) {
 function _cvslib_add_output_pipes(&$cmd) {
   $tempdir = file_directory_temp();
   $tempfiles = array();
+  $random_number = mt_rand();
 
   // Always use a temporary file unless the site specifically wants us not to.
   if (!function_exists('cvslib_local_use_file') || cvslib_local_use_file() == TRUE) {
-    $tempfiles['stdout'] = $tempdir .'/drupal_versioncontrol_cvs.stdout.'. mt_rand() .'.txt';
+    $tempfiles['stdout'] = $tempdir .'/drupal_versioncontrol_cvs.stdout.'. $random_number .'.txt';
     $cmd[] = '> '. $tempfiles['stdout'];
   }
-  $tempfiles['stderr'] = $tempdir .'/drupal_versioncontrol_cvs.stderr.'. mt_rand() .'.txt';
+  $tempfiles['stderr'] = $tempdir .'/drupal_versioncontrol_cvs.stderr.'. $random_number .'.txt';
   $cmd[] = '2> '. $tempfiles['stderr'];
   return $tempfiles;
 }
@@ -100,7 +101,6 @@ function _cvslib_delete_temporary_files($tempfiles) {
  */
 function _cvslib_set_error_message($tempfiles) {
   _cvslib_error_message(file_get_contents($tempfiles['stderr']));
-  @unlink($tempfiles['stderr']);
 }
 
 /**
@@ -153,16 +153,21 @@ function _cvslib_exec($cmd, $tempfiles) {
 
   $return_code = 0;
   exec($cmd, $entries, $return_code);
-  watchdog('special', $cmd);
+  //watchdog('special', $cmd);
 
   if ($return_code != 0) {
     _cvslib_set_error_message($tempfiles);
+    _cvslib_delete_temporary_files($tempfiles);
     return FALSE;
   }
 
   if (isset($tempfiles['stdout'])) {
     $output = fopen($tempfiles['stdout'], 'r');
     if ($output === FALSE) {
+      _cvslib_error_message(t('Could not open output file (!filepath).', array(
+        '!filepath' => $tempfiles['stdout'],
+      )));
+      _cvslib_delete_temporary_files($tempfiles);
       return FALSE;
     }
   }
@@ -217,8 +222,8 @@ function _cvslib_fix_path($path) {
  *        branch/tag (the latest files on a branch are being retrieved).
  *
  * @return
- *   An array that will be filled with a simple, flat list of item objects.
- *   Each object has the following properties:
+ *   An array that will be filled list of item objects, with the item path as
+ *   array key. Each object has the following properties:
  *
  *   - path: The absolute path in the repository, starting with '/'.
  *   - directory: TRUE if the item is a directory, FALSE if it's a file.
@@ -228,6 +233,13 @@ function _cvslib_fix_path($path) {
  *       This is only set if $item->directory is FALSE.
  *   - binary: TRUE if the file is marked as binary, or FALSE if not.
  *       This is only set if $item->directory is FALSE.
+ *   - sticky_date: This property may exist if $constraints contained a 'date'
+ *       filter, and (if set) contains a timestamp of the "sticky date" that
+ *       CVS assigns to this item. Mutually exclusive with sticky_tag below.
+ *   - sticky_tag: This property may exist if $constraints contained a
+ *       'revision' filter describing a branch or tag, and (if set) contains
+ *       the "sticky tag" (branch/tag name) that CVS assigns to this item.
+ *       Mutually exclusive with sticky_date above.
  *
  *   If any errors occurred for any of the given items, boolean FALSE will be
  *   returned - remember to check the return value with "===" or "!==".
@@ -270,7 +282,7 @@ function cvslib_ls($repository_root, $item_path, $constraints = array()) {
   }
 
   // Parse the info from the raw output.
-  $items = _cvslib_parse_ls($repository_root, $entries, $relative_item_path);
+  $contents = _cvslib_parse_ls($repository_root, $entries, $relative_item_path);
 
   // Close the stdout file and delete both stdout and stderr output.
   if (is_resource($entries)) {
@@ -278,7 +290,7 @@ function cvslib_ls($repository_root, $item_path, $constraints = array()) {
   }
   _cvslib_delete_temporary_files($tempfiles);
 
-  return $items;
+  return $contents;
 }
 
 function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
@@ -290,7 +302,7 @@ function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
   $context = (($relative_item_path == '.') ? '/' : ('/'. $relative_item_path .'/'));
   $items = array();
 
-  while (($line = $next($logs)) !== FALSE) {
+  while (($line = $next($entries)) !== FALSE) {
     if (empty($line)) {
       continue;
     }
@@ -303,9 +315,9 @@ function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
     //
     // Format (when used with rls, which lacks sticky tag confusion and stuff):
     //   "D/$path////" for directories
-    //   "/$path/$revision/$formatted_local_time/$flags/" for files
+    //   "/$path/$revision/$formatted_local_time/$flags/$sticky_date_or_tag" for files
 
-    $matches_found = preg_match("@^(D?)/(.+)/([\d\.]*)/([^/]*)/([a-z\-]*)/$@", $line, $matches);
+    $matches_found = preg_match("@^(D?)/(.+)/([\d\.]*)/([^/]*)/([a-z\-]*)/(?:([TD])([^/]*))?$@", $line, $matches);
 
     if (!$matches_found) {
       // No matches means we've probably run into a directory context line,
@@ -329,6 +341,13 @@ function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
       $item->revision = $matches[3];
       $item->date = strtotime($matches[4]);
       $item->binary = (strpos($matches[5], '-kb') !== FALSE);
+
+      if ($matches[6] == 'T') { // sticky tag (which includes branches)
+        $item->sticky_tag = $matches[7];
+      }
+      else if ($matches[6] == 'T') { // sticky tag (which includes branches)
+        $item->sticky_date = strtotime($matches[7]);
+      }
     }
     $items[$item->path] = $item;
   }

@@ -134,12 +134,12 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
   if (!empty($revision)) {
     $ls_constraints['revision'] = $revision;
   }
-  $items = cvslib_ls($repository_root, dirname($item_path), $ls_constraints);
+  $contents = cvslib_ls($repository['root'], dirname($path), $ls_constraints);
 
-  if (!isset($items[$path])) {
+  if (!isset($contents[$path])) {
     return NULL; // does not exist (at least not at the given revision)
   }
-  else if ($items[$path]->directory) {
+  else if ($contents[$path]->directory) {
     return array('item' => $directory_item, 'selected_label' => $label);
   }
   else {
@@ -174,6 +174,46 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
     }
     return array('item' => $item, 'selected_label' => $label);
   }
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_directory_contents():
+ * Retrieve the set of files and directories that exist at a specified revision
+ * in the given directory inside the repository.
+ */
+function versioncontrol_cvs_get_directory_contents($repository, $directory_item, $recursive = FALSE) {
+  _versioncontrol_cvs_init_cvslib($repository);
+
+  $selected_label = versioncontrol_get_item_selected_label($repository, $directory_item);
+  $labelname = empty($selected_label) ? 'HEAD' : $selected_label['name'];
+
+  $contents = cvslib_ls($repository['root'], $directory_item['path'], array(
+    'revision' => $labelname,
+    'recursive' => $recursive,
+  ));
+  if ($contents === FALSE) {
+    return NULL;
+  }
+  $items = array();
+
+  foreach ($contents as $path => $item_info) {
+    $items[$path] = array(
+      'item' => array(
+        'path' => $item_info->path,
+        'revision' => ($item_info->directory) ? '' : $item_info->revision,
+        'type' => ($item_info->directory)
+                  ? VERSIONCONTROL_ITEM_DIRECTORY
+                  : VERSIONCONTROL_ITEM_FILE,
+      ),
+      'selected_label' => array(
+        'type' => empty($selected_label)
+                  ? VERSIONCONTROL_OPERATION_BRANCH
+                  : $selected_label['type'],
+        'name' => $labelname,
+      ),
+    );
+  }
+  return $items;
 }
 
 /**
