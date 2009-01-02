@@ -1,5 +1,5 @@
 ; $Id$
 name = "cvs.module compatibility"
 description = "Compatibility layer to implement certain aspects of cvs.module on top of Version Control API and its CVS backend."
-dependencies = versioncontrol_cvs versioncontrol_project
+dependencies = versioncontrol_cvs versioncontrol_project commitlog
 package = Version Control
