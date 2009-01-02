@@ -151,7 +151,7 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
   $ls_constraints = array(
     'show_dead_files' => TRUE,
     'show_empty_dirs' => TRUE,
-  )
+  );
   if (!empty($revision)) {
     $ls_constraints['revision'] = $revision;
   }
