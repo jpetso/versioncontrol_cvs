@@ -19,27 +19,6 @@ include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_c
 
 /**
  * Implementation of hook_versioncontrol_backends().
- *
- * @return
- *   A structured array containing information about this known backends.
- *   Array key is the unique string identifier of the version control system.
- *   The corresponding array values are again structured arrays and consist
- *   of elements with the following keys:
- *
- *   'name': The user-visible name of the VCS.
- *   'description': A short description of the backend, if possible not longer
- *                  than one or two sentences.
- *   'capabilities': An array listing optional capabilities, in addition to the
- *                   required functionality like retrieval of detailed
- *                   commit information. Array values can be an arbitrary
- *                   combination of VERSIONCONTROL_CAPABILITY_* values. If no
- *                   additional capabilities are supported by the backend,
- *                   this array will be empty.
- *   'autoadd': An array listing which tables should be managed by
- *              Version Control API instead of doing it manually in
- *              the backend. Array values can be an arbitrary combination of
- *              VERSIONCONTROL_AUTOADD_* values. If no array additions
- *              should be automatically managed, this array will be empty.
  */
 function versioncontrol_cvs_versioncontrol_backends() {
   return array(
