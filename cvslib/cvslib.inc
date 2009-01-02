@@ -12,6 +12,9 @@
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 
+define('CVSLIB_STDOUT_NO_FILE', 1);
+define('CVSLIB_STDOUT_USE_FILE_IF_POSSIBLE', 2);
+
 // file_directory_temp() and t() are normally provided by Drupal, but as
 // this file is supposed to be independent from Drupal code, here are
 // fallback definitions for those functions.
@@ -65,13 +68,25 @@ function _cvslib_repository_login($repository_root) {
  *   is executed. In its current form, the return array only contains
  *   the filename for STDERR output as 'stderr' array element.
  */
-function _cvslib_add_output_pipes(&$cmd) {
+function _cvslib_add_output_pipes(&$cmd, $stdout_mode = CVSLIB_STDOUT_USE_FILE_IF_POSSIBLE) {
   $tempdir = file_directory_temp();
   $tempfiles = array();
   $random_number = mt_rand();
 
+  if ($stdout_mode == CVSLIB_STDOUT_NO_FILE) {
+    $use_stdout_file = FALSE;
+  }
+  else { // if ($stdout_mode == CVSLIB_STDOUT_USE_FILE_IF_POSSIBLE) {
+    if (function_exists('cvslib_local_use_file') && !cvslib_local_use_file()) {
+      $use_stdout_file = FALSE;
+    }
+    else {
+      $use_stdout_file = TRUE;
+    }
+  }
+
   // Always use a temporary file unless the site specifically wants us not to.
-  if (!function_exists('cvslib_local_use_file') || cvslib_local_use_file() == TRUE) {
+  if ($use_stdout_file) {
     $tempfiles['stdout'] = $tempdir .'/drupal_versioncontrol_cvs.stdout.'. $random_number .'.txt';
     $cmd[] = '> '. $tempfiles['stdout'];
   }
@@ -152,7 +167,7 @@ function _cvslib_exec($cmd, $tempfiles) {
   $cmd = implode(' ', $cmd);
 
   $return_code = 0;
-  exec($cmd, $entries, $return_code);
+  exec($cmd, $output, $return_code);
   //watchdog('special', $cmd);
 
   if ($return_code != 0) {
@@ -187,13 +202,14 @@ function _cvslib_fix_path($path) {
   if ($path[0] == '/') {
     $path = substr($path, 1);
   }
-  return $path;
+  return escapeshellcmd($path);
 }
 
 
 /**
- * Retrieve and parse the logs of one or more items (files or directories)
- * into a list of item objects that they can be processed more easily.
+ * Retrieve the contents a repository item (probably a directory, but will also
+ * work for files) and return it as list of item objects. This function is
+ * equivalent to "cvs -qnf -d $repository_root rls -e $item_path".
  *
  * @param $repository_root
  *   The root directory of the CVS repository that you want to access.
@@ -201,10 +217,10 @@ function _cvslib_fix_path($path) {
  *   beforehand.
  * @param $item_path
  *   A string containing an item path relative to the repository root.
- *   This function will retrieve the item descriptions for each of the
- *   corresponding items, or for all of their descendant files if the path
- *   denotes a directory. Both paths starting with a slash ("/") and paths
- *   omitting it are accepted as input.
+ *   This function will retrieve item information for each of the corresponding
+ *   items, or for all of their descendant files if the path denotes a
+ *   directory. Both paths starting with a slash ("/") and paths omitting it
+ *   are accepted as input.
  * @param $constraints
  *   An array of filter constraints that specify which repository items should
  *   be retrieved. The following array elements are accepted (all are optional):
@@ -219,7 +235,7 @@ function _cvslib_fix_path($path) {
  *        If set to TRUE, even empty directories will show up.
  *   - 'date': Retrieve files at a specific date (given as Unix timestamp).
  *   - 'revision': Retrieve files with a given revision number or on a given
- *        branch/tag (the latest files on a branch are being retrieved).
+ *        branch/tag (on a branch, the latest revisions will be retrieved).
  *
  * @return
  *   An array that will be filled list of item objects, with the item path as
@@ -360,7 +376,7 @@ function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
  * Retrieve and parse the logs of one or more items (files or directories)
  * into a list of file revision objects that they can be processed more easily.
  * This function is equivalent to
- * "cvs rls -qnf -d $repository_root rlog -S $item_paths".
+ * "cvs -qnf -d $repository_root rlog -S $item_paths".
  *
  * @param $repository_root
  *   The root directory of the CVS repository that you want to access.
@@ -484,7 +500,6 @@ function cvslib_log($repository_root, $item_paths = '.', $constraints = array())
   foreach ($item_paths as $path) {
     $cmd[] = _cvslib_fix_path($path);
   }
-  $cmd[] = escapeshellcmd($path);
   $tempfiles = _cvslib_add_output_pipes($cmd);
   $logs = _cvslib_exec($cmd, $tempfiles);
 
@@ -493,7 +508,7 @@ function cvslib_log($repository_root, $item_paths = '.', $constraints = array())
   }
 
   // Parse the info from the raw output.
-  $file_revisions = _cvslib_parse_log($repository_root, $logs, $file_revisions);
+  $file_revisions = _cvslib_parse_log($repository_root, $logs);
 
   // Close the stdout file and delete both stdout and stderr output.
   if (is_resource($logs)) {
@@ -687,3 +702,64 @@ function _cvslib_parse_log($repository_root, &$logs) {
   return $file_revisions;
 }
 
+
+/**
+ * Copy the contents of a file in a repository to a given destination.
+ * This function is equivalent to
+ * 'cvs -qnf -d $repository_root checkout -p $item_path > $destination'.
+ *
+ * @param $destination
+ *   The path of the file that should afterwards contain the file contents.
+ * @param $repository_root
+ *   The root directory of the CVS repository that you want to access.
+ *   This function performs the necessary shell escapes, no need to do that
+ *   beforehand.
+ * @param $item_path
+ *   A string containing the file path relative to the repository root. Both
+ *   paths starting with a slash ("/") and paths omitting it are accepted
+ *   as input.
+ * @param $constraints
+ *   An array of filter constraints that specify which repository items should
+ *   be retrieved. The following array elements are accepted (all are optional):
+ *
+ *   - 'date': Retrieve the file at a specific date (given as Unix timestamp).
+ *   - 'revision': Retrieve the file with a given revision number or on a given
+ *        branch/tag (on a branch, the latest revision will be retrieved).
+ *
+ * @return
+ *   TRUE if the file was created successfully. If the CVS invocation exited
+ *   with an error, this function returns FALSE and the error message can be
+ *   retrieved by calling cvslib_last_error_message().
+ */
+function cvslib_cat($destination, $repository_root, $item_path, $constraints = array()) {
+  if (!_cvslib_repository_login($repository_root)) {
+    return FALSE;
+  }
+
+  $cmd = array(
+    'cvs',
+    '-qnf', // standard global arguments: quiet, no disk changes, no ~/.cvsrc file
+    '-d '. escapeshellcmd($repository_root),
+    'checkout',
+    '-p', // "Send updates to standard output (avoids stickiness)."
+  );
+  if (!empty($constraints['revision'])) {
+    $cmd[] = '-r'. $constraints['revision'];
+  }
+  if (!empty($constraints['date'])) {
+    $cmd[] = '-D @'. $constraints['date'];
+  }
+  $relative_item_path = _cvslib_fix_path($item_path);
+  $cmd[] = $relative_item_path;
+
+  $cmd[] = '> '. $destination;
+  $tempfiles = _cvslib_add_output_pipes($cmd, CVSLIB_STDOUT_NO_FILE);
+  $output = _cvslib_exec($cmd, $tempfiles);
+
+  if ($output === FALSE) {
+    @unlink($destination);
+    return FALSE;
+  }
+  _cvslib_delete_temporary_files($tempfiles);
+  return TRUE;
+}
