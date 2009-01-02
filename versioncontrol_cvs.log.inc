@@ -112,6 +112,7 @@ function _versioncontrol_cvs_log_process($repository, $file_revisions) {
       if ($file_revision->revision === '1.1') {
         $operation_item['action'] = VERSIONCONTROL_ACTION_ADDED;
         $operation_item['source_items'] = array();
+        unset($operation_item['line_changes']);
       }
     }
 
