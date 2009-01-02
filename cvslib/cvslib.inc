@@ -217,8 +217,8 @@ function _cvslib_fix_path($path) {
  *        branch/tag (the latest files on a branch are being retrieved).
  *
  * @return
- *   An array that will be filled with a simple, flat list of
- *   file revision objects. Each object has the following properties:
+ *   An array that will be filled with a simple, flat list of item objects.
+ *   Each object has the following properties:
  *
  *   - path: The absolute path in the repository, starting with '/'.
  *   - directory: TRUE if the item is a directory, FALSE if it's a file.
