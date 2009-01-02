@@ -46,7 +46,7 @@ function versioncontrol_cvslog_compat_application_page() {
  * Page callback for the 'cvs-application' menu path.
  */
 function versioncontrol_cvslog_compat_commitlog_page() {
-  $constraints = array();
+  $constraints = array('vcs' => array('cvs'));
 
   // Transform the query string into Version Control API constraints.
   if (is_numeric($_REQUEST['commit'])) {
