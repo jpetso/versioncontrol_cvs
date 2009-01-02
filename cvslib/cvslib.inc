@@ -188,7 +188,7 @@ function _cvslib_fix_path($path) {
 
 /**
  * Retrieve and parse the logs of one or more items (files or directories)
- * into a list of file revision objects that they can be processed more easily.
+ * into a list of item objects that they can be processed more easily.
  *
  * @param $repository_root
  *   The root directory of the CVS repository that you want to access.
@@ -196,7 +196,7 @@ function _cvslib_fix_path($path) {
  *   beforehand.
  * @param $item_path
  *   A string containing an item path relative to the repository root.
- *   This function will retrieve the file revisions for each of the
+ *   This function will retrieve the item descriptions for each of the
  *   corresponding items, or for all of their descendant files if the path
  *   denotes a directory. Both paths starting with a slash ("/") and paths
  *   omitting it are accepted as input.
