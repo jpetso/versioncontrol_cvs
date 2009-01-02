@@ -7,14 +7,14 @@
  *
  * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
- * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
+ * Copyright 2007, 2008 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 
 function xcvs_help($cli, $output_stream) {
   fwrite($output_stream, "Usage: $cli <config file> \$USER /%p %{s}\n\n");
 }
 
-function xcvs_get_commit_action($filename, $dir) {
+function xcvs_get_operation_item($filename, $dir) {
   // Determine if the committed files were added, deleted or modified,
   // and construct an appropriate commit action entry for each file.
   // It checks for the existence of the file in the repository and/or
@@ -30,34 +30,93 @@ function xcvs_get_commit_action($filename, $dir) {
   $filepath_workingcopy = getcwd() .'/'. $filename;
   $exists_in_workingcopy = is_file($filepath_workingcopy);
 
-  $action = array();
+  $item = array(
+    'type' => VERSIONCONTROL_ITEM_FILE,
+    'path' => $repository_path,
+    'source_items' => array(),
+  );
 
   if (!$exists_in_repository) {
-    $action['action'] = VERSIONCONTROL_ACTION_ADDED;
+    $item['action'] = VERSIONCONTROL_ACTION_ADDED;
   }
   else if (!$exists_in_workingcopy) {
-    $action['action'] = VERSIONCONTROL_ACTION_DELETED;
+    $item['action'] = VERSIONCONTROL_ACTION_DELETED;
+    $item['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
   }
   else {
-    $action['action'] = VERSIONCONTROL_ACTION_MODIFIED;
+    $item['action'] = VERSIONCONTROL_ACTION_MODIFIED;
   }
 
-  if ($exists_in_workingcopy) {
-    $action['current item'] = array(
+  if ($exists_in_repository) {
+    $action['source_items'][] = array(
       'type' => VERSIONCONTROL_ITEM_FILE,
       'path' => $repository_path,
     );
   }
-  if ($exists_in_repository) {
-    $action['source items'] = array(
-      array(
-        'type' => VERSIONCONTROL_ITEM_FILE,
-        'path' => $repository_path,
-      ),
-    );
-  }
 
   return array($repository_path, $action);
+}
+
+/**
+ * See if the current commit has a sticky tag, and if so, add it as
+ * operation label so that it can be validated to be a valid branch.
+ */
+function xcvs_commit_labels() {
+  if (!is_dir('CVS')) {
+    fwrite(STDERR, "** ERROR: No local CVS directory during commit, aborting.\n\n");
+    exit(5);
+  }
+  $labels = array();
+
+  if (file_exists('CVS/Tag')) {
+    // There's a sticky tag, validate it.
+    $sticky_tag = '';
+    $tag_file = trim(file_get_contents('CVS/Tag'));
+    if (!empty($tag_file)) {
+      // Get the sticky tag for this commit: strip off the leading 'T or N'.
+      $sticky_tag = preg_replace('@^(T|N)@', '', $tag_file);
+    }
+    if (!empty($sticky_tag)) {
+      $labels[$sticky_tag] = array(
+        'type' => VERSIONCONTROL_OPERATION_BRANCH,
+        'name' => $sticky_tag,
+        'action' => VERSIONCONTROL_ACTION_MODIFIED,
+      );
+    }
+  }
+  // To be extra paranoid, check everything in CVS/Entries, too.
+  if (file_exists('CVS/Entries')) {
+    $entries = file('CVS/Entries');
+
+    if (!empty($entries)) {
+      foreach ($entries as $entry) {
+        $parts = explode('/', trim($entry));
+        if (empty($parts[5])) {
+          continue;
+        }
+        $sticky_tag = preg_replace('@^(T|N)@', '', trim($parts[5]));
+
+        if (isset($labels[$sticky_tag])) {
+          continue;
+        }
+        $labels[$sticky_tag] = array(
+          'type' => VERSIONCONTROL_OPERATION_BRANCH,
+          'name' => $sticky_tag,
+          'action' => VERSIONCONTROL_ACTION_MODIFIED,
+        );
+      }
+    }
+  }
+  $labels = array_values($labels);
+
+  if (empty($labels)) {
+    $labels[] = array(
+      'type' => VERSIONCONTROL_OPERATION_BRANCH,
+      'name' => 'HEAD',
+      'action' => VERSIONCONTROL_ACTION_MODIFIED,
+    );
+  }
+  return $labels;
 }
 
 function xcvs_init($argc, $argv) {
@@ -90,25 +149,25 @@ function xcvs_init($argc, $argv) {
     // Do a full Drupal bootstrap.
     xcvs_bootstrap($xcvs);
 
-    // Construct a minimal commit array.
-    $commit = array(
+    // Construct a minimal commit operation array.
+    $operation = array(
+      'type' => VERSIONCONTROL_OPERATION_COMMIT,
       'repo_id' => $xcvs['repo_id'],
       'username' => $username,
+      'labels' => xcvs_commit_labels(),
     );
 
-    $commit_actions = array();
+    $operation_items = array();
     foreach ($filenames as $filename) {
-      list($path, $action) = xcvs_get_commit_action($filename, $dir);
-      $commit_actions[$path] = $action;
+      list($path, $item) = xcvs_get_operation_item($filename, $dir);
+      $operation_items[$path] = $item;
     }
-
-    // CVS doesn't tell us the branch at this point, so we need to pass NULL.
-    $access = versioncontrol_has_commit_access($commit, $commit_actions, NULL);
+    $access = versioncontrol_has_write_access($operation, $operation_items);
 
     // Fail and print out error messages if commit access has been denied.
     if (!$access) {
       fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
-      exit(5);
+      exit(6);
     }
   }
   // If we get as far as this, the commit may happen.

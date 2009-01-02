@@ -3,17 +3,67 @@
 // $Id$
 /**
  * @file
- * Provides access checking for 'cvs tag' commands.
+ * Provides access checking for 'cvs tag' commands, and prepares data for
+ * the xcvs-posttag.php script.
  *
  * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
- * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
+ * Copyright 2007, 2008 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
-// TODO: implement the "don't remove release tags" restriction -
-//       not in here, but rather in the release node integration
 
 function xcvs_help($cli, $output_stream) {
   fwrite($output_stream, "Usage: $cli <config file> \$USER %t %b %o %p %{sTVv}\n\n");
+}
+
+/**
+ * Determine whether the given tag name corresponds to a tag or branch
+ * for the given (file) item. Don't even try to pass a directory item here,
+ * because unbelievably bad things will happen when you do.
+ *
+ * @return
+ *   Either VERSIONCONTROL_OPERATION_BRANCH or VERSIONCONTROL_OPERATION_TAG,
+ *   depending on the outcome. In the unlikely case that this script has made
+ *   an error when retrieving the file information, it exits with 
+ */
+function xcvs_branch_or_tag($tag_name, $item) {
+  $trimmed_path = trim($item['path'], '/');
+  exec("cvs -Qn -d $_ENV[CVSROOT] rlog -h $trimmed_path", $output_lines);
+
+  $scanning = TRUE;
+  $matches = array();
+
+  foreach ($output_lines as $line) {
+    if ($scanning) {
+      if (trim($line) == 'symbolic names:') {
+        $scanning = FALSE;
+      }
+    }
+    else {
+      if (strpos($line, 'keyword substitution:') !== FALSE) {
+        // No branches and tags anymore, should not happen.
+        // If it does, fail hard.
+        break;
+      }
+      $parts = explode(':', trim($line)); // e.g. "DRUPAL-5--2-0: 1.4"
+      $symbolic_name = trim($parts[0]);
+
+      if ($symbolic_name != $tag_name) { // We're searching for the given name.
+        continue;
+      }
+      // Found the specified tag!
+      $revision = trim($parts[1]);
+
+      // If the revision ends with "0.N", we know this is a branch.
+      if (preg_match('/\.0\.\d+$/', $revision)) {
+        return VERSIONCONTROL_OPERATION_BRANCH;
+      }
+      // Otherwise, it's a real revision, and the symbolic name is a tag.
+      return VERSIONCONTROL_OPERATION_TAG;
+    }
+  }
+  // Just in case we made an error - should not happen.
+  fwrite(STDERR, "Error: symbolic name not found.\n");
+  exit(6);
 }
 
 function xcvs_init($argc, $argv) {
@@ -46,84 +96,95 @@ function xcvs_init($argc, $argv) {
     // Do a full Drupal bootstrap.
     xcvs_bootstrap($xcvs);
 
-    switch ($cvs_op) {
-      case 'add':
-        $action = VERSIONCONTROL_ACTION_ADDED;
-        break;
-
-      case 'mov':
-        $action = VERSIONCONTROL_ACTION_MOVED;
-        break;
-
-      case 'del':
-        if (!$xcvs['allow_tag_removal']) {
-          fwrite(STDERR, $xcvs['tag_delete_denied_message']);
-          exit(5);
-        }
-        // as $type == '?', we don't know if it's branches or tags,
-        // so let go without asking the Version Control API
-        // TODO: I think we can work around this by logging all branches and tags
-        //       for each item in the database, and afterwards looking them up.
-        $action = VERSIONCONTROL_ACTION_DELETED;
-        exit(0);
-
-      default:
-        fwrite(STDERR, "Error: unknown tag action.\n");
-        exit(6);
-    }
-
     // Gather info for each tagged/branched file.
     $items = array();
+
     while (!empty($argv)) {
       $filename = array_shift($argv);
       $source_branch = array_shift($argv);
       $old = array_shift($argv);
       $new = array_shift($argv);
+      $path = '/'. $dir .'/'. $filename;
 
-      $item = array(
-        'type' => VERSIONCONTROL_ITEM_FILE,
-        'path' => '/'. $dir .'/'. $filename,
-        'revision' => ($new != 'NONE') ? $new : $old,
-      );
-      if ($action != VERSIONCONTROL_ACTION_DELETED) {
-        $item['source branch'] = empty($source_branch) ? 'HEAD' : $source_branch;
+      if ($type == 'N') { // is a tag
+        $label_type = VERSIONCONTROL_OPERATION_TAG;
+      }
+      else if ($type == 'T') { // is a branch
+        $label_type = VERSIONCONTROL_OPERATION_BRANCH;
       }
 
-      $items[] = $item;
+      if (in_array($cvs_op, array('add', 'mov'))) {
+        $items[VERSIONCONTROL_ACTION_ADDED][$label_type][$path] = array(
+          'type' => VERSIONCONTROL_ITEM_FILE,
+          'path' => $path,
+          'revision' => $new,
+        );
+        // $source_branch is not currently being used by Version Control API.
+      }
+      if (in_array($cvs_op, array('del', 'mov'))) {
+        $item = array(
+          'type' => VERSIONCONTROL_ITEM_FILE,
+          'path' => $path,
+          'revision' => $old,
+        );
+        if ($type == '?') {
+          $label_type = xcvs_branch_or_tag($tag_name, $item);
+        }
+        $items[VERSIONCONTROL_ACTION_DELETED][$label_type][$path] = $item;
+      }
     }
 
     if (empty($items)) {
-      exit(0); // if nothing is being tagged, we don't need to control access.
-    }
-
-    $branch_or_tag = array(
-      'action' => $action,
-      'username' => $username,
-      'repo_id' => $xcvs['repo_id'],
-      'cvs_specific' => array(),
-    );
-
-    if ($type == 'N') { // is a tag
-      $branch_or_tag['tag_name'] = $tag_name;
-      $access = versioncontrol_has_tag_access($branch_or_tag, $items);
-    }
-    else if ($type == 'T') { // is a branch
-      $branch_or_tag['branch_name'] = $tag_name;
-      $access = versioncontrol_has_branch_access($branch_or_tag, $items);
-    }
-
-    // Fail and print out error messages if branch/tag access has been denied.
-    if (!$access) {
-      fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
+      fwrite(STDERR, "Operation doesn't affect any item, aborting.\n");
       exit(7);
+    }
+
+    foreach ($items as $action => $items_by_action) {
+      foreach ($items_by_action as $label_type => $operation_items) {
+        $operation = array(
+          'type' => $label_type,
+          'username' => $username,
+          'repo_id' => $xcvs['repo_id'],
+        );
+        $label = array(
+          'type' => $label_type,
+          'name' => $tag_name,
+          'action' => $action,
+        );
+        $operation['labels'] = array($label);
+
+        $access = versioncontrol_has_write_access($operation, $operation_items);
+
+        // Fail and print out error messages if branch/tag access has been denied.
+        if (!$access) {
+          fwrite(STDERR, implode("\n\n", versioncontrol_get_access_errors()) ."\n\n");
+          exit(7);
+        }
+      }
     }
   }
   // If we get as far as this, the tagging/branching operation may happen.
 
-  // Remember this directory so that loginfo can combine tags/branches
+  // Remember this directory so that posttag can combine tags/branches
   // from different directories in one tag/branch entry.
   $lastlog = $tempdir .'/xcvs-lastlog.'. posix_getpgrp();
   xcvs_log_add($lastlog, $dir);
+
+  // Also remember the label type per item - posttag won't be able to determine
+  // this by itself because the action has already been executed. Only needed
+  // for branch/tag deletions - 'add' and 'mov' don't need this kind of crap.
+  if ($cvs_op == 'del') {
+    $taginfo = $tempdir .'/xcvs-taginfo.'. posix_getpgrp();
+
+    foreach ($items as $action => $items_by_action) {
+      foreach ($items_by_action as $label_type => $operation_items) {
+        foreach ($operation_items as $path => $item) {
+          $ltype = ($label_type == VERSIONCONTROL_OPERATION_TAG) ? 'N' : 'T';
+          xcvs_log_add($taginfo, "$path,". $ltype ."\n", 'a');
+        }
+      }
+    }
+  }
 
   exit(0);
 }

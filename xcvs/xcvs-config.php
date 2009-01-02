@@ -18,7 +18,7 @@
 $xcvs['drupal_path'] = '/home/username/public_html';
 
 // File location where to store temporary files.
-$xcvs['temp'] = "/tmp";
+$xcvs['temp'] = '/tmp';
 
 // Drupal repository id that this installation of scripts is going to
 // interact with. In order to find out the repository id, go to the
@@ -40,19 +40,6 @@ $xcvs['allowed_users'] = array();
 // name that your settings.php file resides in (ex: www.example.com)
 // If you use the default settings.php file, leave this blank.
 $xcvs['multisite_directory'] = '';
-
-// ------------------------------------------------------------
-// Access control
-// ------------------------------------------------------------
-
-// Boolean to specify if users should be allowed to delete tags (= branches).
-$xcvs['allow_tag_removal'] = TRUE;
-
-// Error message for the above permission.
-$xcvs['tag_delete_denied_message'] = <<<EOF
-** ERROR: You are not allowed to delete tags.
-
-EOF;
 
 
 // ------------------------------------------------------------
@@ -104,7 +91,7 @@ function xcvs_log_add($filename, $dir, $mode = 'w') {
 
 function xcvs_is_last_directory($logfile, $dir) {
   if (file_exists($logfile)) {
-    $fd = fopen($logfile, "r");
+    $fd = fopen($logfile, 'r');
     $last = fgets($fd);
     fclose($fd);
     return $dir == $last ? TRUE : FALSE;

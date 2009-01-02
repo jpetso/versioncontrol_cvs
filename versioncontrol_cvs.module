@@ -9,7 +9,6 @@
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
-// TODO: remove versioncontrol_cvs_get_{branched,tagged}_items()
 
 // Update methods.
 define('VERSIONCONTROL_CVS_UPDATE_CRON', 0);
@@ -20,27 +19,6 @@ include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/versioncontrol_c
 
 /**
  * Implementation of hook_versioncontrol_backends().
- *
- * @return
- *   A structured array containing information about this known backends.
- *   Array key is the unique string identifier of the version control system.
- *   The corresponding array values are again structured arrays and consist
- *   of elements with the following keys:
- *
- *   'name': The user-visible name of the VCS.
- *   'description': A short description of the backend, if possible not longer
- *                  than one or two sentences.
- *   'capabilities': An array listing optional capabilities, in addition to the
- *                   required functionality like retrieval of detailed
- *                   commit information. Array values can be an arbitrary
- *                   combination of VERSIONCONTROL_CAPABILITY_* values. If no
- *                   additional capabilities are supported by the backend,
- *                   this array will be empty.
- *   'autoadd': An array listing which tables should be managed by
- *              Version Control API instead of doing it manually in
- *              the backend. Array values can be an arbitrary combination of
- *              VERSIONCONTROL_AUTOADD_* values. If no array additions
- *              should be automatically managed, this array will be empty.
  */
 function versioncontrol_cvs_versioncontrol_backends() {
   return array(
@@ -72,11 +50,6 @@ function versioncontrol_cvs_versioncontrol_backends() {
         // {versioncontrol_cvs_repositories} and versioncontrol_get_repositories()
         // will automatically fetch it from there.
         VERSIONCONTROL_FLAG_AUTOADD_REPOSITORIES,
-        // versioncontrol_insert_commit() will automatically insert
-        // array elements from $commit['cvs_specific'] into
-        // {versioncontrol_cvs_commits} and versioncontrol_get_commits()
-        // will automatically fetch it from there.
-        VERSIONCONTROL_FLAG_AUTOADD_COMMITS,
       ),
     ),
   );
@@ -123,232 +96,120 @@ function versioncontrol_cvs_cron() {
   }
 }
 
+/**
+ * Include the cvslib.inc helper library so that its functions can be called.
+ */
+function _versioncontrol_cvs_init_cvslib() {
+  include_once(drupal_get_path('module', 'versioncontrol_cvs') .'/cvslib/cvslib.inc');
+}
+
 
 /**
- * Implementation of [versioncontrol_backend]_get_commit_actions():
- * Retrieve detailed information about what happened in a single commit.
- *
- * @param $commit
- *   The commit whose actions should be retrieved.
- *
- * @return
- *   A structured array containing the exact details of what happened to
- *   each item in this commit. Array keys are the current/new paths, also for
- *   VERSIONCONTROL_ACTION_DELETED actions even if the file actually doesn't
- *   exist anymore. The corresponding array values are again structured arrays
- *   and consist of elements with the following keys:
- *
- *   'action': Specifies how the item was modified.
- *             One of the predefined VERSIONCONTROL_ACTION_* values.
- *   'modified': Boolean value, specifies if a file was modified in addition
- *               to the other action in the 'action' element of the array.
- *               Only exists for the VERSIONCONTROL_ACTION_MOVED
- *               and VERSIONCONTROL_ACTION_COPIED actions.
- *   'current item': The updated state of the modified item. Exists for all
- *                   actions except VERSIONCONTROL_ACTION_DELETED.
- *   'source items': An array with the previous state(s) of the modified item.
- *                   Path and branch will always be the same as in the current
- *                   item except for the VERSIONCONTROL_ACTION_MOVED,
- *                   VERSIONCONTROL_ACTION_COPIED and
- *                   VERSIONCONTROL_ACTION_MERGED actions.
- *                   Exists for all actions except VERSIONCONTROL_ACTION_ADDED.
- *
- *   Item values are structured arrays and consist of elements
- *   with the following keys:
- *
- *   'type': Specifies the item type, which is either
- *           VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
- *   'path': The path of the item at the specific revision.
- *   'revision': The (file-level) revision when the item was changed.
- *               If there is no such revision (which may be the case for
- *               directory items) then the 'revision' element is
- *               an empty string.
- *   '[xxx]_specific': May be set by the backend to remember additional
- *                     item info. ("[xxx]" is the unique string identifier
- *                     of the respective version control system.)
+ * Implementation of [versioncontrol_backend]_get_item():
+ * Try to retrieve a given item in a repository.
  */
-function versioncontrol_cvs_get_commit_actions($commit) {
-  $actions = array();
-  $result = db_query('SELECT item_revision_id, action, type, path,
-                             revision, lines_added, lines_removed
-                      FROM {versioncontrol_cvs_item_revisions}
-                      WHERE vc_op_id = %d', $commit['vc_op_id']);
+function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
+  _versioncontrol_cvs_init_cvslib();
 
-  while ($item_revision = db_fetch_object($result)) {
-    $action = array(
-      'action' => $item_revision->action,
-      'cvs_specific' => array(
-        'lines_added' => $item_revision->lines_added,
-        'lines_removed' => $item_revision->lines_removed,
-      ),
-    );
+  $label = array(
+    'name' => 'HEAD',
+    'type' => VERSIONCONTROL_OPERATION_BRANCH,
+  );
+  $directory_item = array(
+    'path' => $path,
+    'revision' => '',
+    'type' => VERSIONCONTROL_ITEM_DIRECTORY,
+  );
 
-    $action['current item'] = array(
-      'type' => $item_revision->type,
-      'path' => $item_revision->path,
-      'revision' => $item_revision->revision,
-      'cvs_specific' => array(
-        'item_revision_id' => $item_revision->item_revision_id,
-        'selected_branch_id' => $commit['cvs_specific']['branch_id'],
-        'selected_op' => $commit,
-      ),
-    );
-    if ($item_revision->action != VERSIONCONTROL_ACTION_ADDED) {
-      $source_revision = versioncontrol_cvs_get_previous_revision_number($item_revision->revision);
-      $action['source items'] = array(array(
-        'type' => $item_revision->type,
-        'path' => $item_revision->path,
-        'revision' => isset($source_revision) ? $source_revision : '',
-        'cvs_specific' => array(
-          'item_revision_id' => $item_revision->item_revision_id,
-          'selected_branch_id' => $commit['cvs_specific']['branch_id'],
-          'selected_op' => $commit,
-        ),
-      ));
+  // Special casing the root directory, because it's always the same.
+  if ($path == '/') {
+    return array('item' => $directory_item, 'selected_label' => $label);
+  }
+
+  // Use ls to see whether the item is a directory.
+  $ls_constraints = array(
+    'show_dead_files' => TRUE,
+    'show_empty_dirs' => TRUE,
+  );
+  if (!empty($revision)) {
+    $ls_constraints['revision'] = $revision;
+  }
+  $contents = cvslib_ls($repository['root'], dirname($path), $ls_constraints);
+
+  if (!isset($contents[$path])) {
+    return NULL; // does not exist (at least not at the given revision)
+  }
+  else if ($contents[$path]->directory) {
+    return array('item' => $directory_item, 'selected_label' => $label);
+  }
+  else {
+    // The item exists and is a file. We want more info (dead or not, label)
+    // so let's retrieve further info with cvs log.
+    $file_revisions = cvslib_log($repository['root'], $path, array(
+      'revision' => empty($revision) ? 'HEAD.' : $revision,
+      'recursive' => FALSE,
+    ));
+    if ($file_revisions === FALSE || empty($file_revisions)) {
+      return NULL;
+    }
+    $file_revision = reset($file_revisions); // first array element
+
+    if ($file_revision->path != $path) {
+      // Should not happen, but let's avoid subtle bugs and race conditions.
+      return NULL;
     }
 
-    $actions[$item_revision->path] = $action;
+    $item = array(
+      'path' => $file_revision->path,
+      'revision' => $file_revision->revision,
+      'type' => $file_revision->dead
+                ? VERSIONCONTROL_ITEM_FILE_DELETED
+                : VERSIONCONTROL_ITEM_FILE,
+    );
+    if (empty($file_revision->branch)) {
+      $label = NULL; // should not happen except in unknown edge cases
+    }
+    else {
+      $label['name'] = $file_revision->branch;
+    }
+    return array('item' => $item, 'selected_label' => $label);
   }
-
-  return $actions;
 }
 
 /**
- * Implementation of [versioncontrol_backend]_get_commit_statistics():
- * Retrieve general statistics about what happened in a single commit. For more granular
- * details about what happened in a single commit, use versioncontrol_get_commit_actions.
- *
- * @param $commit
- *   The commit to retrieve statistics about
- *
- * @return
- *  A structured array containing general statistics about this commit. The array will consist
- *  of elements with the following keys:
- *
- *   - 'lines_added': Total number of lines added during this commit
- *   - 'lines_removed': Total number of lines removed during this commit
- *   - 'action_count': Total number of actions within this commit
- *   - 'per_action_statistics': An array containing statistics on individual actions. Array keys are
- *        the current/new paths (just as with versioncontrol_get_commit_actions). The corresponding
- *        array values are again structured arrays and consist of elements with the following keys:
- *   
- *   - 'lines_added': Number of lines added in this action
- *   - 'lines_removed': Number of lines removed in this action
+ * Implementation of [versioncontrol_backend]_get_directory_contents():
+ * Retrieve the set of files and directories that exist at a specified revision
+ * in the given directory inside the repository.
  */
-function versioncontrol_cvs_get_commit_statistics($commit, $commit_actions = NULL) {
-  if ($commit_actions == NULL) {
-    $commit_actions = versioncontrol_cvs_get_commit_actions($commit);
+function versioncontrol_cvs_get_directory_contents($repository, $directory_item, $recursive = FALSE) {
+  _versioncontrol_cvs_init_cvslib($repository);
+
+  $selected_label = versioncontrol_get_item_selected_label($repository, $directory_item);
+  $labelname = empty($selected_label) ? 'HEAD' : $selected_label['name'];
+
+  $contents = cvslib_ls($repository['root'], $directory_item['path'], array(
+    'revision' => $labelname,
+    'recursive' => $recursive,
+  ));
+  if ($contents === FALSE) {
+    return NULL;
   }
-
-  $total_lines_added = 0;
-  $total_lines_removed = 0;
-  $per_action = array();
-
-  foreach ($commit_actions as $path => $action) {
-    $per_action[$path] = array();
-
-    $per_action[$path]['lines_added'] = $action['cvs_specific']['lines_added'];
-    $total_lines_added += $per_action[$path]['lines_added'];
-
-    $per_action[$path]['lines_removed'] = $action['cvs_specific']['lines_removed'];
-    $total_lines_removed += $action['cvs_specific']['lines_removed'];
-  }
-
-  return array(
-    'lines_added' => $total_lines_added,
-    'lines_removed' => $total_lines_removed,
-    'action_count' => count($per_action),
-    'per_action_statistics' => $per_action,
-  );
-}
-
-/**
- * Implementation of [versioncontrol_backend]_get_directory_item():
- * Retrieve the item of the deepest-level directory in the repository that is
- * common to all the changed/branched/tagged items in a commit, branch or
- * tag operation. In other words, this function gets you the item
- * for $operation['directory'].
- *
- * @param $operation
- *   The commit, branch or tag operation whose deepest-level
- *   changed/branched/tagged directory should be retrieved.
- *
- * @return
- *   The requested directory item. Item values are structured arrays and
- *   consist of elements with the following keys:
- *
- *   - 'type': Specifies the item type, which in this case can only be
- *        VERSIONCONTROL_ITEM_DIRECTORY.
- *   - 'path': The path of the directory, which will be the same
- *        as $operation['directory'].
- *   - 'revision': The (file-level) revision when the item was last changed.
- *        If there is no such revision (which may be the case for
- *        directory items) then the 'revision' element is an empty string.
- *   - '[xxx]_specific': May be set by the backend to remember additional
- *        item info. ("[xxx]" is the unique string identifier
- *        of the respective version control system.)
- */
-function versioncontrol_cvs_get_directory_item($operation) {
-  $item = array(
-    'type' => VERSIONCONTROL_ITEM_DIRECTORY,
-    'path' => $operation['directory'],
-    'revision' => '',
-    'cvs_specific' => array(
-      'selected_op' => $operation,
-    ),
-  );
-  if (isset($operation['cvs_specific']['branch_id'])) { // it's a commit or branch
-    $item['cvs_specific']['selected_branch_id'] = $operation['cvs_specific']['branch_id'];
-  }
-  if ($operation['type'] == VERSIONCONTROL_OPERATION_TAG) {
-    $item['cvs_specific']['selected_tag_name'] = $operation['tag_name'];
-  }
-  return $item;
-}
-
-/**
- * Retrieve the set of items that were affected by a branch operation.
- *
- * @param $branch
- *   The branch operation whose items should be retrieved. This is an array
- *   like the one returned by versioncontrol_get_branch_operation().
- *
- * @return
- *   An array of all items that were affected by the branching operation.
- *   An empty result array means that the whole repository has been branched.
- *   Item values are structured arrays and consist of elements
- *   with the following keys:
- *
- *   - 'type': Specifies the item type, which is either
- *        VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
- *   - 'path': The path of the item at the specific revision.
- *   - 'revision': The (file-level) revision when the item was changed.
- *        If there is no such revision (which may be the case for
- *        directory items) then the 'revision' element is an empty string.
- *   - 'source branch': Optional, may be set by the backend if the
- *        source branch (the one that this one branched off) can be retrieved.
- *        If given, this is a string with the original branch name.
- *   - '[xxx]_specific': May be set by the backend to remember additional
- *        item info. ("[xxx]" is the unique string identifier of the respective
- *        version control system.)
- */
-function versioncontrol_cvs_get_branched_items($branch) {
   $items = array();
-  $result = db_query('SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
-                      FROM {versioncontrol_cvs_item_branch_points} ib
-                       INNER JOIN {versioncontrol_cvs_item_revisions} ir
-                        ON ib.item_revision_id = ir.item_revision_id
-                      WHERE ib.vc_op_id = %d', $branch['vc_op_id']);
 
-  while ($item_revision = db_fetch_object($result)) {
-    $items[] = array(
-      'type' => $item_revision->type,
-      'path' => $item_revision->path,
-      'revision' => $item_revision->revision,
-      'cvs_specific' => array(
-        'item_revision_id' => $item_revision->item_revision_id,
-        'selected_branch_id' => $branch['cvs_specific']['branch_id'],
-        'selected_op' => $branch,
+  foreach ($contents as $path => $item_info) {
+    $items[$path] = array(
+      'item' => array(
+        'path' => $item_info->path,
+        'revision' => ($item_info->directory) ? '' : $item_info->revision,
+        'type' => ($item_info->directory)
+                  ? VERSIONCONTROL_ITEM_DIRECTORY
+                  : VERSIONCONTROL_ITEM_FILE,
+      ),
+      'selected_label' => array(
+        'type' => empty($selected_label)
+                  ? VERSIONCONTROL_OPERATION_BRANCH
+                  : $selected_label['type'],
+        'name' => $labelname,
       ),
     );
   }
@@ -356,110 +217,102 @@ function versioncontrol_cvs_get_branched_items($branch) {
 }
 
 /**
- * Retrieve the set of items that were affected by a tag operation.
- *
- * @param $tag
- *   The tag operation whose items should be retrieved. This is an array
- *   like the one returned by versioncontrol_get_tag_operation().
- *
- * @return
- *   An array of all items that were affected by the tagging operation.
- *   An empty result array means that the whole repository has been tagged.
- *   Item values are structured arrays and consist of elements
- *   with the following keys:
- *
- *   - 'type': Specifies the item type, which is either
- *        VERSIONCONTROL_ITEM_FILE or VERSIONCONTROL_ITEM_DIRECTORY.
- *   - 'path': The path of the item at the specific revision.
- *   - 'revision': The (file-level) revision when the item was changed.
- *        If there is no such revision (which may be the case for
- *        directory items) then the 'revision' element is an empty string.
- *   - 'source branch': Optional, may be set by the backend if the
- *        source branch (the one that this tag comes from) can be retrieved.
- *        If given, this is a string with the original branch name.
- *   - '[xxx]_specific': May be set by the backend to remember additional
- *        item info. ("[xxx]" is the unique string identifier of the respective
- *        version control system.)
+ * Implementation of [versioncontrol_backend]_get_file_copy():
+ * Retrieve a copy of the contents of a given item in the repository.
+ * (You won't get the original because repositories can often be remote.)
  */
-function versioncontrol_cvs_get_tagged_items($tag) {
-  $items = array();
-  $result = db_query('SELECT ir.item_revision_id, ir.type, ir.path, ir.revision
-                      FROM {versioncontrol_cvs_item_tags} it
-                       INNER JOIN {versioncontrol_cvs_item_revisions} ir
-                        ON it.item_revision_id = ir.item_revision_id
-                      WHERE it.vc_op_id = %d', $tag['vc_op_id']);
+function versioncontrol_cvs_get_file_copy($repository, $file_item, $destination) {
+  _versioncontrol_cvs_init_cvslib($repository);
 
-  while ($item_revision = db_fetch_object($result)) {
-    $items[] = array(
-      'type' => $item_revision->type,
-      'path' => $item_revision->path,
-      'revision' => $item_revision->revision,
-      'cvs_specific' => array(
-        'item_revision_id' => $item_revision->item_revision_id,
-        'selected_op' => $tag,
-        'selected_tag_name' => $tag['tag_name'],
-      ),
+  $success = cvslib_cat($destination, $repository['root'], $file_item['path'],
+                        array('revision' => $file_item['revision']));
+  return $success;
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_selected_label_from_operation():
+ * Retrieve the tag or branch that applied to that item during the given
+ * operation. The result of this function will be used for the selected label
+ * property of each item, which is necessary to provide a starting point for
+ * branch and tag navigation.
+ */
+function versioncontrol_cvs_get_selected_label_from_operation($operation, $target_item) {
+  // Tag renames are represented by two labels, "added" and "deleted".)
+  // In that case, make sure that the "added" label will be selected.
+  if (count($operation['labels'] > 1)) {
+    foreach ($operation['labels'] as $label) {
+      if ($label['action'] == VERSIONCONTROL_ACTION_ADDED) {
+        return $label;
+      }
+    }
+  }
+  // Otherwise, each operation by the CVS backend has exactly one branch or tag
+  // assigned, so we can just return that one for all items in any operation.
+  // NOTE: That might change though, in case the CVS backend gets functionality
+  //       to add branches to commits later - because when another branch is
+  //       forked off, all previous commits to a file are now both in the
+  //       original branch *and* in the new branch. Very low priority, though.
+  return $operation['labels'][0];
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_get_selected_label_from_other_item():
+ * Retrieve a valid label (tag or branch) for a new @p $target_item that is
+ * (hopefully) similar or related to that of the given @p $other_item which
+ * already has a selected label assigned. If the backend cannot find a related
+ * label, return any valid label. The result of this function will be used for
+ * the selected label property of each item, which is necessary to preserve the
+ * item state throughout navigational API functions.
+ */
+function versioncontrol_cvs_get_selected_label_from_other_item($repository, $target_item, &$other_item, $other_item_tags = array()) {
+  // First up, optimizations - maybe we can do without the generic
+  // "label transfer" code from further down and use assumptions instead.
+
+  // A directory can always have the same tag name as another item, in the
+  // worst case a directory content listing just won't list any files.
+  if (versioncontrol_is_directory_item($target_item)) {
+    return versioncontrol_get_item_selected_label($repository, $other_item);
+  }
+
+  // Each source item is also available on the same branch as its successor.
+  // That means we can take the label as is - if it's actually a branch.
+  if ($other_item == 'successor_item') {
+    $label = versioncontrol_get_item_selected_label($repository, $other_item);
+
+    if (isset($label['type']) && $label['type'] == VERSIONCONTROL_OPERATION_BRANCH) {
+      return $label;
+    }
+  }
+
+  // Otherwise we can't really figure out a label for this item -
+  // it's a tag label array or NULL - so we either have to query CVS itself
+  // (most correct solution except when invoking CVS fails for any reason),
+  // or look up in the database if we know the commit associated to this item
+  // revision (correct solution if the commit has been recorded and the
+  // database has captured all branch/tag renames correctly). In case both
+  // of those don't work, we can only return NULL - which is not really a nice
+  // thing to do, as normally the CVS backend always provides a branch.
+  // But that's how it goes, I guess.
+
+  // Try 1 (more performant than process invocation):
+  // Look if the database contains the associated commit.
+  if (versioncontrol_fetch_item_revision_id($repository, $target_item)) {
+    $constraints = array(
+      'item_revision_id' => array($target_item['item_revision_id']),
     );
-  }
-  return $items;
-}
+    $commit_operations = versioncontrol_get_commit_operations($constraints);
 
-/**
- * Implementation of [versioncontrol_backend]_get_current_item_branch():
- * Retrieve the current branch that this item is in.
- */
-function versioncontrol_cvs_get_current_item_branch($repository, $item) {
-  if (!isset($item['cvs_specific']['selected_branch_id'])) {
-    return NULL;
+    if (!empty($commit_operations)) { // yo, found the associated commit!
+      $commit_operation = reset($commit_operations); // first (only) element
+      return $commit_operation['labels'][0];
+    }
   }
 
-  $branch = versioncontrol_get_branch($item['cvs_specific']['selected_branch_id']);
-  if (!isset($branch)) {
-    return NULL;
-  }
-  return $branch['branch_name'];
-}
+  // Hm, didn't work, so...
+  // Try 2: Get the information directly from the CVS process.
+  // TODO: implement? or just leave it at that as "good enough"?
 
-/**
- * Implementation of [versioncontrol_backend]_get_current_item_tag():
- * Retrieve the current tag that has been applied to this item.
- */
-function versioncontrol_cvs_get_current_item_tag($repository, $item) {
-  if (isset($item['cvs_specific']['selected_tag_name'])) {
-    return $item['cvs_specific']['selected_tag_name'];
-  }
-  return NULL;
-}
-
-/**
- * Implementation of [vcs_backend]_get_parent_item():
- * Retrieve the parent (directory) item of a given item.
- *
- * @param $repository
- *   The repository that the item is located in.
- * @param $item
- *   The item whose parent should be retrieved.
- * @param $parent_path
- *   NULL if the direct parent of the given item should be retrieved,
- *   or a parent path that is further up the directory tree.
- *
- * @return
- *   The parent directory item at the same revision as the given item.
- *   If $parent_path is not set and the item is already the topmost one
- *   in the repository, the item is returned as is. It also stays the same
- *   if $parent_path is given and the same as the path of the given item.
- *   If the given directory path does not correspond to a parent item,
- *   NULL is returned.
- */
-function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = NULL) {
-  if (!isset($parent_path)) {
-    $item['path'] = dirname($item['path']);
-    return $item;
-  }
-  else if (strpos($item['path'] .'/', $parent_path .'/') !== FALSE) {
-    $item['path'] = $parent_path;
-    return $item;
-  }
+  // No label could be retrieved by looking at the other item, sorry.
   return NULL;
 }
 
@@ -468,165 +321,34 @@ function versioncontrol_cvs_get_parent_item($repository, $item, $parent_path = N
  * CVS tells us that the file was modified (has a previous revision) even if
  * it has been deleted before. Technically that's correct, but we'd like to
  * have it show up as "added", so this function tries to be smart and alters
- * a commit actions array accordingly if the database tells us that the
+ * an operation items array accordingly if the database tells us that the
  * previous revision of a file was dead.
  */
-function _versioncontrol_cvs_fix_commit_actions($commit, &$commit_actions) {
-  foreach ($commit_actions as $path => $action) {
-    if ($action['action'] != VERSIONCONTROL_ACTION_MODIFIED) {
+function _versioncontrol_cvs_fix_commit_operation_items($operation, &$operation_items) {
+  foreach ($operation_items as $path => $item) {
+    if ($item['action'] != VERSIONCONTROL_ACTION_MODIFIED) {
       continue;
     }
-    $repo_id = isset($commit['repository'])
-               ? $commit['repository']['repo_id']
-               : $commit['repo_id'];
+    $repo_id = isset($operation['repository'])
+               ? $operation['repository']['repo_id']
+               : $operation['repo_id'];
     $count = db_result(db_query(
       "SELECT COUNT(*)
-        FROM {versioncontrol_cvs_item_revisions} ir
+        FROM {versioncontrol_item_revisions} ir
+          INNER JOIN {versioncontrol_operation_items} opitem
+            ON ir.item_revision_id = opitem.item_revision_id
           INNER JOIN {versioncontrol_operations} op
-            ON ir.vc_op_id = op.vc_op_id
+            ON opitem.vc_op_id = op.vc_op_id
         WHERE op.repo_id = %d AND op.type = %d
           AND ir.type = %d AND ir.path = '%s' AND ir.revision = '%s'",
       $repo_id, VERSIONCONTROL_OPERATION_COMMIT,
       VERSIONCONTROL_ITEM_FILE_DELETED, $path,
-      $action['source items'][0]['revision']
+      $action['source_items'][0]['revision']
     ));
     if ($count > 0) {
-      $commit_actions[$path]['action'] = VERSIONCONTROL_ACTION_ADDED;
-      unset($commit_actions[$path]['source items']);
+      $operation_items[$path]['action'] = VERSIONCONTROL_ACTION_ADDED;
+      $operation_items[$path]['source_items'] = array();
     }
-  }
-}
-
-/**
- * Implementation of [versioncontrol_backend]_commit():
- * Manage (insert or delete) additional commit data in the database.
- *
- * @param $op
- *   Either 'insert' when the commit is in the process of being created,
- *   or 'delete' if it will be deleted after this function has been called.
- * @param $commit
- *   A single commit array, like the ones returned
- *   by versioncontrol_get_commits().
- * @param $commit_actions
- *   A structured array containing the exact details of what happened to
- *   each item in this commit. The structure of this array is the same as
- *   the return value of versioncontrol_get_commit_actions().
- */
-function versioncontrol_cvs_commit($op, $commit, $commit_actions) {
-  switch ($op) {
-    case 'insert':
-      foreach ($commit_actions as $path => $action) {
-        $item_revision_id = db_next_id('{versioncontrol_cvs_item_revisions}_item_revision_id');
-        db_query(
-          "INSERT INTO {versioncontrol_cvs_item_revisions}
-           (item_revision_id, vc_op_id, type, path, revision,
-            action, lines_added, lines_removed)
-           VALUES (%d, %d, %d, '%s', '%s', %d, %d, %d)",
-          $item_revision_id, $commit['vc_op_id'], $action['current item']['type'],
-          $path, $action['current item']['revision'], $action['action'],
-          $action['cvs_specific']['lines_added'], $action['cvs_specific']['lines_removed']
-        );
-      }
-      break;
-
-    case 'delete':
-      $result = db_query('SELECT item_revision_id
-                          FROM {versioncontrol_cvs_item_revisions}
-                          WHERE vc_op_id = %d', $commit['vc_op_id']);
-
-      while ($revision = db_fetch_object($result)) {
-        db_query('DELETE FROM {versioncontrol_cvs_item_tags}
-                  WHERE item_revision_id = %d',
-                  $revision->item_revision_id);
-        db_query('DELETE FROM {versioncontrol_cvs_item_branch_points}
-                  WHERE item_revision_id = %d',
-                  $revision->item_revision_id);
-      }
-      db_query('DELETE FROM {versioncontrol_cvs_item_revisions}
-                WHERE vc_op_id = %d', $commit['vc_op_id']);
-      break;
-  }
-}
-
-/**
- * Implementation of [versioncontrol_backend]_branch_operation():
- * Manage (insert or delete) additional branch operation data in the database.
- *
- * @param $op
- *   Either 'insert' when the branch operation is in the process of being created,
- *   or 'delete' if it will be deleted after this function has been called.
- * @param $branch
- *   A single branch operation array, like the one returned
- *   by versioncontrol_get_branch_operation().
- * @param $branched_items
- *   An array of all items that are affected by the branching operation.
- *   Compared to standard item arrays, the ones in here may not have the
- *   'revision' element set (however, the CVS backend always provides those)
- *   and can optionally contain a 'source branch' element that specifies
- *   the original branch name of this item.
- *   (For $op == 'delete', 'source branch' is never set.)
- *   An empty $branched_items array means that the whole repository has been
- *   branched (which is not used for CVS, as branches/tags are always assigned
- *   to specific files).
- */
-function versioncontrol_cvs_branch_operation($op, $branch, $branched_items) {
-  _versioncontrol_cvs_branch_or_tag_operation(
-    $op, $branch, $branched_items, 'item_branch_points'
-  );
-}
-
-/**
- * Implementation of [versioncontrol_backend]_tag_operation():
- * Manage (insert or delete) additional tag operation data in the database.
- *
- * @param $op
- *   Either 'insert' when the tag operation is in the process of being created,
- *   or 'delete' if it will be deleted after this function has been called.
- * @param $tag
- *   A single tag operation array, like the one returned
- *   by versioncontrol_get_tag_operation().
- * @param $tagged_items
- *   An array of all items that are affected by the tagging operation.
- *   Compared to standard item arrays, the ones in here may not have the
- *   'revision' element set (however, the CVS backend always provides those)
- *   and can optionally contain a 'source branch' element that specifies
- *   the original branch name of this item.
- *   (For $op == 'move' or $op == 'delete', 'source branch' is never set.)
- *   An empty $tagged_items array means that the whole repository has been
- *   tagged (which is not used for CVS, as branches/tags are always assigned
- *   to specific files).
- */
-function versioncontrol_cvs_tag_operation($op, $tag, $tagged_items) {
-  _versioncontrol_cvs_branch_or_tag_operation(
-    $op, $tag, $tagged_items, 'item_tags'
-  );
-}
-
-/**
- * The implementation of the branch and tag operation hooks is essentially the
- * same (just different table names), so let's share the code in this function.
- */
-function _versioncontrol_cvs_branch_or_tag_operation($op, $branch_or_tag, $items, $table_name) {
-  switch ($op) {
-    case 'insert':
-      foreach ($items as $item) {
-        $result = db_query("SELECT item_revision_id
-                            FROM {versioncontrol_cvs_item_revisions}
-                            WHERE path = '%s' AND revision = '%s'",
-                            $item['path'], $item['revision']);
-
-        while ($revision = db_fetch_object($result)) {
-          db_query('INSERT INTO {versioncontrol_cvs_'. $table_name .'}
-                    (vc_op_id, item_revision_id) VALUES (%d, %d)',
-                    $branch_or_tag['vc_op_id'], $revision->item_revision_id);
-        }
-      }
-      break;
-
-    case 'delete':
-      db_query('DELETE FROM {versioncontrol_cvs_'. $table_name .'}
-                WHERE vc_op_id = %d', $branch_or_tag['vc_op_id']);
-      break;
   }
 }
 

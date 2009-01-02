@@ -9,7 +9,7 @@
  * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Adam Light ("aclight", http://drupal.org/user/86358)
- * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
+ * Copyright 2007, 2008 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 
 function xcvs_help($cli, $output_stream) {
@@ -22,53 +22,108 @@ function xcvs_exit($status, $lastlog, $summary) {
   exit($status);
 }
 
-function xcvs_get_commit_action($file_entry) {
+function xcvs_get_operation_item($file_entry) {
   if ($file_entry) {
     list($path, $old, $new) = explode(",", $file_entry);
 
     if ($old == 'dir') { // directories can only be added in CVS
-      $action = array(
+      $item = array(
+        'type' => VERSIONCONTROL_ITEM_DIRECTORY,
+        'path' => $path,
+        'revision' => '',
         'action' => VERSIONCONTROL_ACTION_ADDED,
-        'current item' => array(
-          'type' => VERSIONCONTROL_ITEM_DIRECTORY,
-          'path' => $path,
-          'revision' => '',
-        ),
       );
-      return array($path, $action);
+      return array($path, $item);
     }
 
-    $action = array();
+    $item = array(
+      'type' => VERSIONCONTROL_ITEM_FILE,
+      'path' => $path,
+      'revision' => $new,
+      'source_items' => array(),
+    );
 
     // If it's not a directory, it must be one of three possible file actions
     if ($old == 'NONE') {
-      $action['action'] = VERSIONCONTROL_ACTION_ADDED;
+      $item['action'] = VERSIONCONTROL_ACTION_ADDED;
     }
     else if ($new == 'NONE') {
-      $action['action'] = VERSIONCONTROL_ACTION_DELETED;
+      $item['action'] = VERSIONCONTROL_ACTION_DELETED;
+      $item['type'] = VERSIONCONTROL_ITEM_FILE_DELETED;
+      // $item['revision'] stores 'NONE' for the time being,
+      // this is being fixed in xcvs_fix_operation_items().
     }
     else {
-      $action['action'] = VERSIONCONTROL_ACTION_MODIFIED;
+      $item['action'] = VERSIONCONTROL_ACTION_MODIFIED;
     }
 
-    if ($new != 'NONE') {
-      $action['current item'] = array(
+    if ($old != 'NONE') {
+      $item['source_items'][] = array(
         'type' => VERSIONCONTROL_ITEM_FILE,
         'path' => $path,
-        'revision' => $new,
-      );
-    }
-    if ($old != 'NONE') {
-      $action['source items'] = array(
-        array(
-          'type' => VERSIONCONTROL_ITEM_FILE,
-          'path' => $path,
-          'revision' => $old,
-        ),
+        'revision' => $old,
       );
     }
 
-    return array($path, $action);
+    return array($path, $item);
+  }
+}
+
+/**
+ * For deleted items, CVS doesn't tell us their new (deleted) revision,
+ * although it exists and is recorded by CVS itself. We need that revision for
+ * uniqueness of the item entry in the database, and for the CVS backend
+ * recognizing the "modified file is actually an added file" case.
+ * So let's get the revision identifier of the deleted file.
+ */
+function xcvs_fix_operation_items(&$operation_items, $branch_name) {
+  foreach ($operation_items as $path => $item) {
+    if ($item['revision'] != 'NONE') {
+      continue;
+    }
+
+    $trimmed_path = trim($item['path'], '/');
+    unset($output_lines);
+    exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$old::$branch_name -s dead $trimmed_path", $output_lines);
+
+    $matches = array();
+    foreach ($output_lines as $line) {
+      // 'revision 1.6.2.23'
+      if (preg_match('/^revision ([\d\.]+).*$/', $line, $matches)) {
+        $operation_items[$path]['revision'] = $matches[1];
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Fetch the amount of added and removed lines for each file.
+ */
+function xcvs_fetch_item_line_changes(&$operation_items) {
+  // Find out how many lines have been added and removed for each file.
+  foreach ($operation_items as $path => $item) {
+    if ($item['action'] == VERSIONCONTROL_ACTION_DELETED
+        || $item['type'] == VERSIONCONTROL_ITEM_DIRECTORY) {
+      continue;
+    }
+
+    $current_rev = $item['revision'];
+    $trimmed_path = trim($item['path'], '/');
+    unset($output_lines);
+    exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $output_lines);
+
+    $matches = array();
+    foreach ($output_lines as $line) {
+      // 'date: 2004/08/20 07:51:22;  author: dries;  state: Exp;  lines: +2 -2'
+      if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+).*$/', $line, $matches)) {
+        $operation_items[$path]['line_changes'] = array(
+          'added'   => (int) $matches[1],
+          'removed' => (int) $matches[2],
+        );
+        break;
+      }
+    }
   }
 }
 
@@ -154,68 +209,50 @@ function xcvs_init($argc, $argv) {
       fwrite(STDERR, "Error: failed to open summary log at $summary.\n");
       xcvs_exit(5, $lastlog, $summary);
     }
-    $commit_actions = array();
+    $operation_items = array();
 
     // Do a full Drupal bootstrap. We need it from now on at the latest,
-    // starting with the action constants in xcvs_get_commit_action().
+    // starting with the action constants in xcvs_get_operation_item().
     xcvs_bootstrap($xcvs);
 
     while (!feof($fd)) {
       $file_entry = trim(fgets($fd));
-      list($path, $action) = xcvs_get_commit_action($file_entry);
+      list($path, $item) = xcvs_get_operation_item($file_entry);
       if ($path) {
-        $commit_actions[$path] = $action;
+        $operation_items[$path] = $item;
       }
     }
     fclose($fd);
 
     // Integrate with the Drupal Version Control API.
-    if (!empty($commit_actions)) {
-
-      // Find out how many lines have been added and removed for each file.
-      foreach ($commit_actions as $action_path => $action) {
-        if (!isset($action['current item'])) {
-          continue;
-        }
-
-        $current_rev = $action['current item']['revision'];
-        $trimmed_path = trim($action['current item']['path'], '/');
-        unset($output_lines);
-        exec("cvs -Qn -d $_ENV[CVSROOT] rlog -N -r$current_rev $trimmed_path", $output_lines);
-
-        $matches = array();
-        foreach ($output_lines as $line) {
-          // 'date: 2004/08/20 07:51:22;  author: dries;  state: Exp;  lines: +2 -2'
-          if (preg_match('/^date: .+;\s+lines: \+(\d+) -(\d+).*$/', $line, $matches)) {
-            break;
-          }
-        }
-        $commit_actions[$action_path]['cvs_specific'] = array(
-          'lines_added' => empty($matches) ? 0 : (int) $matches[1],
-          'lines_removed' => empty($matches) ? 0 : (int) $matches[2],
-        );
-      }
-
+    if (!empty($operation_items)) {
       // Get the remaining info from the commit log that we get from STDIN.
       list($branch_name, $message) = xcvs_parse_log(STDIN);
 
-      // Get the branch id, and insert the branch into the database
-      // if it doesn't exist yet.
-      $branch_id = versioncontrol_ensure_branch($branch_name, $xcvs['repo_id']);
+      // Add the real revision to deleted items.
+      xcvs_fix_operation_items($operation_items, $branch_name);
+
+      // Determine how many lines were added and removed for a given file.
+      xcvs_fetch_item_line_changes($operation_items);
 
       // Prepare the data for passing it to Version Control API.
-      $commit = array(
+      $operation = array(
+        'type' => VERSIONCONTROL_OPERATION_COMMIT,
         'repo_id' => $xcvs['repo_id'],
         'date' => $date,
         'username' => $username,
         'message' => $message,
         'revision' => '',
-        'cvs_specific' => array(
-          'branch_id' => $branch_id,
+        'labels' => array(
+          array(
+            'type' => VERSIONCONTROL_OPERATION_BRANCH,
+            'name' => $branch_name,
+            'action' => VERSIONCONTROL_ACTION_MODIFIED,
+          ),
         ),
       );
-      _versioncontrol_cvs_fix_commit_actions($commit, $commit_actions);
-      versioncontrol_insert_commit($commit, $commit_actions);
+      _versioncontrol_cvs_fix_commit_operation_items($operation, $operation_items);
+      versioncontrol_insert_operation($operation, $operation_items);
     }
 
     // Clean up
