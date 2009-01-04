@@ -23,7 +23,8 @@ function xcvs_help($cli, $output_stream) {
  * @return
  *   Either VERSIONCONTROL_OPERATION_BRANCH or VERSIONCONTROL_OPERATION_TAG,
  *   depending on the outcome. In the unlikely case that this script has made
- *   an error when retrieving the file information, it exits with 
+ *   an error when retrieving the file information, it exits program execution
+ *   with a non-zero error code.
  */
 function xcvs_branch_or_tag($tag_name, $item) {
   $trimmed_path = trim($item['path'], '/');

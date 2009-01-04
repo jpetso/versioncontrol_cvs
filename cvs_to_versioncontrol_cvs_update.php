@@ -130,7 +130,7 @@ function cvs_to_versioncontrol_cvs_update_3() {
   // Loop through each project.
   while ($project = db_fetch_object($projects)) {
     // Add the repo module, and chop off the trailing slash.
-    $directory = '/'. trim($project->modules) . substr($project->directory, 0, strlen($project->directory) - 1);
+    $directory = '/'. trim($project->modules) . drupal_substr($project->directory, 0, strlen($project->directory) - 1);
     db_query("INSERT INTO {versioncontrol_project_projects} (nid, repo_id, directory) VALUES (%d, %d, '%s')", $project->nid, $project->rid, $directory);
     $_SESSION['cvs_to_versioncontrol_cvs_update_3']++;
   }
@@ -411,10 +411,10 @@ function update_finished_page($success) {
 
   // Report end result
   if ($success) {
-    $output = '<p>Updates were attempted. If you see no failures below, you should remove cvs_to_versioncontrol_cvs_update.php from your Drupal root directory. Otherwise, you may need to update your database manually. All errors have been <a href="index.php?q=admin/logs/watchdog">logged</a>.</p>';
+    $output = '<p>Updates were attempted. If you see no failures below, you should remove cvs_to_versioncontrol_cvs_update.php from your Drupal root directory. Otherwise, you may need to update your database manually. All errors have been <a href="index.php?q=admin/reports/dblog">logged</a>.</p>';
   }
   else {
-    $output = '<p class="error">The update process was aborted prematurely. All other errors have been <a href="index.php?q=admin/logs/watchdog">logged</a>. You may need to check the <code>watchdog</code> database table manually.</p>';
+    $output = '<p class="error">The update process was aborted prematurely. All other errors have been <a href="index.php?q=admin/reports/dblog">logged</a>. You may need to check the <code>watchdog</code> database table manually.</p>';
     $output .= '<p class="error">This has most likely occurred because the Version Control/CVS module or the old CVS module is not <a href="index.php?q=admin/build/modules">properly installed</a>.</p>';
   }
 

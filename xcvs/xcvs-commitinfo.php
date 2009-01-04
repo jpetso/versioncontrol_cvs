@@ -24,7 +24,7 @@ function xcvs_get_operation_item($filename, $dir) {
   $repository_path = $dir .'/'. $filename;
 
   $filepath_repository = $_ENV['CVSROOT'] . $dir .'/'. $filename .',v';
-  $filepath_attic = $_ENV['CVSROOT']. $dir .'/Attic/'. $filename .',v';
+  $filepath_attic = $_ENV['CVSROOT'] . $dir .'/Attic/'. $filename .',v';
   $exists_in_repository = (is_file($filepath_repository) || is_file($filepath_attic));
 
   $filepath_workingcopy = getcwd() .'/'. $filename;
