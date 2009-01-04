@@ -11,27 +11,22 @@
 /**
  * Implementation of hook_menu().
  */
-function versioncontrol_cvslog_compat_menu($may_cache) {
+function versioncontrol_cvslog_compat_menu() {
   $items = array();
+  $view_access = 'access commit messages';
 
-  if (!$may_cache) {
-    $access = user_access('access commit messages');
-
-    $items[] = array(
-      'path' => 'cvs',
-      'title' => t('CVS messages'),
-      'callback' => 'versioncontrol_cvslog_compat_commitlog_page',
-      'access' => $access,
-      'type' => MENU_CALLBACK,
-    );
-    $items[] = array(
-      'path' => 'cvs-application',
-      'title' => 'CVS application form',
-      'callback' => 'versioncontrol_cvslog_compat_application_page',
-      'access' => $access,
-      'type' => MENU_CALLBACK,
-    );
-  }
+  $items['cvs'] = array(
+    'title' => 'CVS messages',
+    'page callback' => 'versioncontrol_cvslog_compat_commitlog_page',
+    'access arguments' => array($view_access),
+    'type' => MENU_CALLBACK,
+  );
+  $items['cvs-application'] = array(
+    'title' => 'CVS application form',
+    'page callback' => 'versioncontrol_cvslog_compat_application_page',
+    'access arguments' => array($view_access),
+    'type' => MENU_CALLBACK,
+  );
   return $items;
 }
 

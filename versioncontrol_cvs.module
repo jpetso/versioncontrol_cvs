@@ -58,20 +58,17 @@ function versioncontrol_cvs_versioncontrol_backends() {
 /**
  * Implementation of hook_menu().
  */
-function versioncontrol_cvs_menu($may_cache) {
+function versioncontrol_cvs_menu() {
   global $user;
   $items = array();
-  $admin_access = user_access('administer version control systems');
 
-  if ($may_cache) {
-    $items[] = array(
-      'path' => 'admin/project/versioncontrol-repositories/update/cvs',
-      'title' => t('Fetch log'),
-      'callback' => 'versioncontrol_cvs_update_repository_callback',
-      'access' => $admin_access,
-      'type' => MENU_CALLBACK,
-    );
-  }
+  $items['admin/project/versioncontrol-repositories/update/cvs/%versioncontrol_repository'] = array(
+    'title' => 'Fetch log',
+    'page callback' => 'versioncontrol_cvs_update_repository_callback',
+    'page arguments' => array(5),
+    'access arguments' => array('administer version control systems'),
+    'type' => MENU_CALLBACK,
+  );
   return $items;
 }
 
@@ -516,21 +513,14 @@ function versioncontrol_cvs_export_accounts($repository, $accounts) {
 
 
 /**
- * Menu callback for 'admin/project/versioncontrol-repositories/update/cvs'
- * (expecting a $repo_id as one more path argument):
+ * Menu callback for
+ * 'admin/project/versioncontrol-repositories/update/cvs/%versioncontrol_repository':
  * Retrieve/validate the specified repository, fetch new commits, tags
  * and branches by invoking the cvs executable, output messages and
  * redirect back to the repository page.
  */
-function versioncontrol_cvs_update_repository_callback($repo_id) {
-  if (is_numeric($repo_id)) {
-    $repository = versioncontrol_get_repository($repo_id);
-
-    if (isset($repository)) {
-      $update_method = $repository['cvs_specific']['update_method'];
-    }
-  }
-  if (isset($update_method) && $update_method == VERSIONCONTROL_CVS_UPDATE_CRON) {
+function versioncontrol_cvs_update_repository_callback($repository) {
+  if ($repository['cvs_specific']['update_method'] == VERSIONCONTROL_CVS_UPDATE_CRON) {
     // Set timeout limit to 3600 seconds as it can take a long time
     // to process the log initially.
     if (!ini_get('safe_mode')) {
@@ -541,7 +531,7 @@ function versioncontrol_cvs_update_repository_callback($repo_id) {
     }
   }
   else { // $repo_id is not a number or doesn't correlate to any repository.
-    drupal_set_message(t('No such repository, did not fetch anything.'));
+    drupal_set_message(t('Repository update method does not allow manual updates, did not fetch anything.'));
   }
   drupal_goto('admin/project/versioncontrol-repositories');
 }
