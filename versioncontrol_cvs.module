@@ -66,7 +66,7 @@ function versioncontrol_cvs_menu() {
     'title' => 'Fetch log',
     'page callback' => 'versioncontrol_cvs_update_repository_callback',
     'page arguments' => array(5),
-    'access arguments' => array('administer version control systems'),
+    'access callback' => 'versioncontrol_admin_access',
     'type' => MENU_CALLBACK,
   );
   return $items;
