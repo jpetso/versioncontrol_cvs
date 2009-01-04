@@ -56,7 +56,7 @@ function versioncontrol_cvs_schema() {
       ),
       'modules' => array(
         'description' => t(
-          'A space-separated list of paths (relative to the root directory, without a leading slash) that will be parsed and recorded by the log parser. Normally this will be used to specify modules, but adding more complex paths like "contributions/modules/versioncontrol_cvs" should work just as well (as long as the path contains no spaces).'
+          'A serialized array of path strings (relative to the root directory, without a leading slash) that will be parsed and recorded by the log parser. Normally this will be used to specify modules, but adding more complex paths like "contributions/modules/versioncontrol_cvs" should work just as well. If the whole repository is to be scanned, this column contains an empty serialized array.'
         ),
         'type' => 'varchar',
         'length' => 255,
