@@ -15,26 +15,25 @@
  */
 function versioncontrol_cvs_schema() {
   $schema['versioncontrol_cvs_accounts'] = array(
-    'description' => t('This table extends {versioncontrol_accounts} with a CVS password so that the CVS backend is able to export VCS accounts into a passwd file.'),
+    'description' => 'This table extends {versioncontrol_accounts} with a CVS password so that the CVS backend is able to export VCS accounts into a passwd file.',
     'fields' => array(
       'uid' => array(
-        'description' => t('Foreign key referring to {versioncontrol_accounts}.uid.'),
+        'description' => 'Foreign key referring to {versioncontrol_accounts}.uid.',
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
       'repo_id' => array(
-        'description' => t('Foreign key referring to {versioncontrol_accounts}.repo_id.'),
+        'description' => 'Foreign key referring to {versioncontrol_accounts}.repo_id.',
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
       'password' => array(
-        'description' => t(
-          'The CVS password, encrypted with crypt() which is just the way the passwd file requires it. This way, it\'s safe to store the password in the database as it cannot be recovered from this string.'
-        ),
+        'description' =>
+          'The CVS password, encrypted with crypt() which is just the way the passwd file requires it. This way, it\'s safe to store the password in the database as it cannot be recovered from this string.',
         'type' => 'varchar',
         'length' => 64,
         'not null' => TRUE,
@@ -45,28 +44,26 @@ function versioncontrol_cvs_schema() {
   );
 
   $schema['versioncontrol_cvs_repositories'] = array(
-    'description' => t('This table extends {versioncontrol_repositories} with additional properties specific to CVS repositories.'),
+    'description' => 'This table extends {versioncontrol_repositories} with additional properties specific to CVS repositories.',
     'fields' => array(
       'repo_id' => array(
-        'description' => t('The repository identifier referring to {versioncontrol_repositories}.repo_id.'),
+        'description' => 'The repository identifier referring to {versioncontrol_repositories}.repo_id.',
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
       'modules' => array(
-        'description' => t(
-          'A serialized array of path strings (relative to the root directory, without a leading slash) that will be parsed and recorded by the log parser. Normally this will be used to specify modules, but adding more complex paths like "contributions/modules/versioncontrol_cvs" should work just as well. If the whole repository is to be scanned, this column contains an empty serialized array.'
-        ),
+        'description' =>
+          'A serialized array of path strings (relative to the root directory, without a leading slash) that will be parsed and recorded by the log parser. Normally this will be used to specify modules, but adding more complex paths like "contributions/modules/versioncontrol_cvs" should work just as well. If the whole repository is to be scanned, this column contains an empty serialized array.',
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
         'default' => '',
       ),
       'update_method' => array(
-        'description' => t(
-          'Specifies whether the repository is updated via log parsing on cron runs (VERSIONCONTROL_CVS_UPDATE_CRON) or via hook scripts (VERSIONCONTROL_CVS_UPDATE_XCVS). Updating the repository and fetching new commits into the database are the same thing, by the way.'
-        ),
+        'description' =>
+          'Specifies whether the repository is updated via log parsing on cron runs (VERSIONCONTROL_CVS_UPDATE_CRON) or via hook scripts (VERSIONCONTROL_CVS_UPDATE_XCVS). Updating the repository and fetching new commits into the database are the same thing, by the way.',
         'type' => 'int',
         'size' => 'tiny',
         'unsigned' => TRUE,
@@ -74,18 +71,16 @@ function versioncontrol_cvs_schema() {
         'default' => 0,
       ),
       'updated' => array(
-        'description' => t(
-          'Date/time when the repository was last updated, as Unix timestamp. The CVS backend does not only use this for displaying purposes but also as start date for log parsing. 0 if the repository has never been updated at all.'
-        ),
+        'description' =>
+          'Date/time when the repository was last updated, as Unix timestamp. The CVS backend does not only use this for displaying purposes but also as start date for log parsing. 0 if the repository has never been updated at all.',
         'type' => 'int',
         'unsigned' => TRUE,
         'not null' => TRUE,
         'default' => 0,
       ),
       'run_as_user' => array(
-        'description' => t(
-          'If this is empty, the exported account data will cause server-side CVS to be run with the system user corresponding to the authenticated CVS account name. Otherwise, the exported account data will cause CVS to run as the system user specified by this property.'
-        ),
+        'description' =>
+          'If this is empty, the exported account data will cause server-side CVS to be run with the system user corresponding to the authenticated CVS account name. Otherwise, the exported account data will cause CVS to run as the system user specified by this property.',
         'type' => 'varchar',
         'length' => 255,
         'not null' => TRUE,
