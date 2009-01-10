@@ -131,7 +131,7 @@ function versioncontrol_cvs_uninstall() {
 /**
  * Update 6100: Blah blah blah.
  */
-/*function versioncontrol_cvs_update_6100() {
+/* function versioncontrol_cvs_update_6100() {
   $ret = array();
   $ret[] = update_sql('UPDATE {versioncontrol_cvs_blah} SET value = othervalue');
   return $ret;

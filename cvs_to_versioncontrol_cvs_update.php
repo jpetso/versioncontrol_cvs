@@ -130,7 +130,8 @@ function cvs_to_versioncontrol_cvs_update_3() {
   // Loop through each project.
   while ($project = db_fetch_object($projects)) {
     // Add the repo module, and chop off the trailing slash.
-    $directory = '/'. trim($project->modules) . drupal_substr($project->directory, 0, strlen($project->directory) - 1);
+    $directory = '/'. trim($project->modules) .
+      drupal_substr($project->directory, 0, drupal_strlen($project->directory) - 1);
     db_query("INSERT INTO {versioncontrol_project_projects} (nid, repo_id, directory) VALUES (%d, %d, '%s')", $project->nid, $project->rid, $directory);
     $_SESSION['cvs_to_versioncontrol_cvs_update_3']++;
   }
