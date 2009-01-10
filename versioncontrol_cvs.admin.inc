@@ -18,12 +18,12 @@ define('VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH', 5);
  * Implementation of hook_form_alter(): Add elements to various
  * administrative forms that the Version Control API provides.
  */
-function versioncontrol_cvs_form_alter($form_id, &$form) {
+function versioncontrol_cvs_form_alter(&$form, $form_state, $form_id) {
   if ($form['#id'] == 'versioncontrol-repository-form' && $form['#vcs'] == 'cvs') {
-    versioncontrol_cvs_repository_admin_form_alter($form_id, $form);
+    versioncontrol_cvs_repository_admin_form_alter($form, $form_state, $form_id);
   }
   else if ($form['#id'] == 'versioncontrol-account-form' && $form['#vcs'] == 'cvs') {
-    versioncontrol_cvs_account_form_alter($form_id, $form);
+    versioncontrol_cvs_account_form_alter($form, $form_state, $form_id);
   }
 }
 
@@ -31,7 +31,7 @@ function versioncontrol_cvs_form_alter($form_id, &$form) {
 /**
  * Add CVS specific elements to the add/edit repository form.
  */
-function versioncontrol_cvs_repository_admin_form_alter($form_id, &$form) {
+function versioncontrol_cvs_repository_admin_form_alter(&$form, $form_state, $form_id) {
   $repository = $form['#repository'];
 
   $form['versioncontrol_cvs'] = array(
@@ -165,7 +165,7 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
 /**
  * Add CVS specific elements to the edit/register user account form.
  */
-function versioncontrol_cvs_account_form_alter($form_id, &$form) {
+function versioncontrol_cvs_account_form_alter(&$form, $form_state, $form_id) {
   $form['versioncontrol_cvs'] = array(
     '#type' => 'value',
     '#value' => TRUE,
@@ -183,17 +183,17 @@ function versioncontrol_cvs_account_form_alter($form_id, &$form) {
     '#description' => $description,
     '#weight' => 10,
   );
-  $form['#validate']['versioncontrol_cvs_account_form_validate'] = array();
+  $form['#validate'][] = 'versioncontrol_cvs_account_form_validate';
 }
 
 /**
  * Additional validation for the edit/register user account form.
  */
-function versioncontrol_cvs_account_form_validate($form_id, $form_values) {
-  if (!empty($form_values['original_username']) && empty($form_values['account_password'])) {
+function versioncontrol_cvs_account_form_validate($form, &$form_state) {
+  if (!empty($form_state['values']['original_username']) && empty($form_state['values']['account_password'])) {
     return; // The (existing) user didn't change the password.
   }
-  else if (drupal_strlen($form_values['account_password']) < VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH) {
+  else if (drupal_strlen($form_state['values']['account_password']) < VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH) {
     form_set_error('account_password', t('The CVS password you have chosen is too short (it must be at least !min characters long).', array('!min' => VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH)));
   }
 }
