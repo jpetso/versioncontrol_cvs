@@ -32,7 +32,7 @@ function _versioncontrol_cvs_log_update_repository(&$repository) {
     array('date_lower' => $repository['cvs_specific']['updated'])
   );
   if ($file_revisions === FALSE) {
-    drupal_set_message(cvslib_last_error_message());
+    drupal_set_message(cvslib_last_error_message(), 'error');
     return FALSE;
   }
 
