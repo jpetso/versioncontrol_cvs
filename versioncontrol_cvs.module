@@ -530,7 +530,7 @@ function versioncontrol_cvs_update_repository_callback($repository) {
       drupal_set_message(t('Fetched new log entries.'));
     }
   }
-  else { // $repo_id is not a number or doesn't correlate to any repository.
+  else {
     drupal_set_message(t('Repository update method does not allow manual updates, did not fetch anything.'));
   }
   drupal_goto('admin/project/versioncontrol-repositories');
