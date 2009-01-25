@@ -34,14 +34,8 @@ function versioncontrol_cvs_form_alter(&$form, $form_state, $form_id) {
 function versioncontrol_cvs_repository_admin_form_alter(&$form, $form_state, $form_id) {
   $repository = $form['#repository'];
 
-  $form['versioncontrol_cvs'] = array(
-    '#type' => 'value',
-    '#value' => TRUE,
-  );
-  $form['updated'] = array(
-    '#type' => 'value',
-    '#value' => isset($repository) ? $repository['cvs_specific']['updated'] : 0,
-  );
+  $form['#versioncontrol_cvs'] = TRUE;
+  $form['#updated'] = isset($repository) ? $repository['cvs_specific']['updated'] : 0;
 
   $form['repository_information']['root']['#description'] = t(
     'The CVSROOT of this repository. Examples: /path or :pserver:user:password@server:/path.'
@@ -90,24 +84,24 @@ function versioncontrol_cvs_repository_admin_form_alter(&$form, $form_state, $fo
 }
 
 /**
- * Implementation of hook_versioncontrol_extract_repository_data():
- * Extract CVS specific repository additions from the repository
- * editing/adding form's submitted values.
+ * Implementation of hook_versioncontrol_repository_submit():
+ * Extract repository data from the repository editing/adding form's
+ * submitted values, and add it to the @p $repository array. Later, that array
+ * will be passed to hook_versioncontrol_repository() as part of the repository
+ * insert/update procedure.
  */
-function versioncontrol_cvs_versioncontrol_extract_repository_data($form_values) {
-  if (!isset($form_values['versioncontrol_cvs'])) {
-    return array();
+function versioncontrol_cvs_versioncontrol_repository_submit(&$repository, $form, $form_state) {
+  if (!isset($form['#versioncontrol_cvs'])) {
+    return;
   }
-  $modules = trim($form_values['modules']);
+  $modules = trim($form_state['values']['modules']);
   $modules = empty($modules) ? array() : explode(' ', $modules);
 
-  return array(
-    'cvs_specific' => array(
-      'modules'       => $modules,
-      'update_method' => $form_values['update_method'],
-      'updated'       => $form_values['updated'],
-      'run_as_user'   => $form_values['run_as_user'],
-    ),
+  $repository['cvs_specific'] = array(
+    'modules'       => $modules,
+    'updated'       => $form['#updated'],
+    'update_method' => $form_state['values']['update_method'],
+    'run_as_user'   => $form_state['values']['run_as_user'],
   );
 }
 
@@ -166,12 +160,9 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
  * Add CVS specific elements to the edit/register user account form.
  */
 function versioncontrol_cvs_account_form_alter(&$form, $form_state, $form_id) {
-  $form['versioncontrol_cvs'] = array(
-    '#type' => 'value',
-    '#value' => TRUE,
-  );
+  $form['#versioncontrol_cvs'] = TRUE;
 
-  if (empty($form['original_username']['#value'])) { // creating the account
+  if (empty($form['#original_username'])) { // creating the account
     $description = t('Choose a password to access the CVS repository with.');
   }
   else { // editing the account
@@ -190,7 +181,7 @@ function versioncontrol_cvs_account_form_alter(&$form, $form_state, $form_id) {
  * Additional validation for the edit/register user account form.
  */
 function versioncontrol_cvs_account_form_validate($form, &$form_state) {
-  if (!empty($form_state['values']['original_username']) && empty($form_state['values']['account_password'])) {
+  if (!empty($form['#original_username']) && empty($form_state['values']['account_password'])) {
     return; // The (existing) user didn't change the password.
   }
   else if (drupal_strlen($form_state['values']['account_password']) < VERSIONCONTROL_CVS_MIN_PASSWORD_LENGTH) {
@@ -199,17 +190,15 @@ function versioncontrol_cvs_account_form_validate($form, &$form_state) {
 }
 
 /**
- * Implementation of hook_versioncontrol_extract_account_data():
- * Extract CVS specific user account additions (say: the password)
- * from the edit/register user account form's submitted values.
+ * Implementation of hook_versioncontrol_account_submit():
+ * Extract account data from the account edit/register form's submitted
+ * values, and add it to the @p $additional_data array. Later, that array
+ * will be passed to hook_versioncontrol_account() as part of the account
+ * insert/update procedure.
  */
-function versioncontrol_cvs_versioncontrol_extract_account_data($form_values) {
-  if (!isset($form_values['versioncontrol_cvs']) || empty($form_values['account_password'])) {
-    return array();
+function versioncontrol_cvs_versioncontrol_account_submit(&$additional_data, $form, $form_state) {
+  if (!isset($form['#versioncontrol_cvs']) || empty($form_state['values']['account_password'])) {
+    return;
   }
-  return array(
-    'cvs_specific' => array(
-      'password' => crypt($form_values['account_password']),
-    ),
-  );
+  $additional_data['cvs_specific']['password'] = crypt($form_state['values']['account_password']);
 }
