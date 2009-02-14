@@ -164,6 +164,18 @@ function xcvs_init($argc, $argv) {
         );
         $operation['labels'] = array($label);
 
+        // A word of warning to the user, because it's easy to miss this fact.
+        if ($label['type'] == VERSIONCONTROL_OPERATION_BRANCH
+            && $label['action'] == VERSIONCONTROL_ACTION_ADDED) {
+          fwrite(STDERR, t("
+** NOTE: Don't forget that creating a branch does NOT
+** automatically update your workspace to use that branch.
+** If you want to commit to this new branch, you must run:
+** cvs update -r !branch\n\n",
+            array('!branch' => $label['name'])
+          ));
+        }
+
         versioncontrol_insert_operation($operation, $operation_items);
       }
     }
