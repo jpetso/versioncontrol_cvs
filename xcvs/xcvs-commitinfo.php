@@ -14,7 +14,7 @@ function xcvs_help($cli, $output_stream) {
   fwrite($output_stream, "Usage: $cli <config file> \$USER /%p %{s}\n\n");
 }
 
-function xcvs_get_operation_item($filename, $dir) {
+function xcvs_get_operation_item($filename, $dir, $cwd) {
   // Determine if the committed files were added, deleted or modified,
   // and construct an appropriate commit action entry for each file.
   // It checks for the existence of the file in the repository and/or
@@ -27,7 +27,7 @@ function xcvs_get_operation_item($filename, $dir) {
   $filepath_attic = $_ENV['CVSROOT'] . $dir .'/Attic/'. $filename .',v';
   $exists_in_repository = (is_file($filepath_repository) || is_file($filepath_attic));
 
-  $filepath_workingcopy = getcwd() .'/'. $filename;
+  $filepath_workingcopy = $cwd .'/'. $filename;
   $exists_in_workingcopy = is_file($filepath_workingcopy);
 
   $item = array(
@@ -60,18 +60,22 @@ function xcvs_get_operation_item($filename, $dir) {
 /**
  * See if the current commit has a sticky tag, and if so, add it as
  * operation label so that it can be validated to be a valid branch.
+ *
+ * @param $cwd
+ *   The original current working directory when the script was called.
+ *   (Bootstrapping Drupal changes getcwd() to the Drupal root directory.)
  */
-function xcvs_commit_labels() {
-  if (!is_dir('CVS')) {
+function xcvs_commit_labels($cwd) {
+  if (!is_dir($cwd .'/CVS')) {
     fwrite(STDERR, "** ERROR: No local CVS directory during commit, aborting.\n\n");
     exit(5);
   }
   $labels = array();
 
-  if (file_exists('CVS/Tag')) {
+  if (file_exists($cwd .'/CVS/Tag')) {
     // There's a sticky tag, validate it.
     $sticky_tag = '';
-    $tag_file = trim(file_get_contents('CVS/Tag'));
+    $tag_file = trim(file_get_contents($cwd .'/CVS/Tag'));
     if (!empty($tag_file)) {
       // Get the sticky tag for this commit: strip off the leading 'T or N'.
       $sticky_tag = preg_replace('@^(T|N)@', '', $tag_file);
@@ -85,8 +89,8 @@ function xcvs_commit_labels() {
     }
   }
   // To be extra paranoid, check everything in CVS/Entries, too.
-  if (file_exists('CVS/Entries')) {
-    $entries = file('CVS/Entries');
+  if (file_exists($cwd .'/CVS/Entries')) {
+    $entries = file($cwd .'/CVS/Entries');
 
     if (!empty($entries)) {
       foreach ($entries as $entry) {
@@ -154,12 +158,12 @@ function xcvs_init($argc, $argv) {
       'type' => VERSIONCONTROL_OPERATION_COMMIT,
       'repo_id' => $xcvs['repo_id'],
       'username' => $username,
-      'labels' => xcvs_commit_labels(),
+      'labels' => xcvs_commit_labels($xcvs['cwd']),
     );
 
     $operation_items = array();
     foreach ($filenames as $filename) {
-      list($path, $item) = xcvs_get_operation_item($filename, $dir);
+      list($path, $item) = xcvs_get_operation_item($filename, $dir, $xcvs['cwd']);
       $operation_items[$path] = $item;
     }
     $access = versioncontrol_has_write_access($operation, $operation_items);

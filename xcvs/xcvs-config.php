@@ -7,7 +7,7 @@
  * Copyright 2005 by Kjartan Mannes ("Kjartan", http://drupal.org/user/2)
  * Copyright 2006, 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
  * Copyright 2007 by Adam Light ("aclight", http://drupal.org/user/86358)
- * Copyright 2007, 2008 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
+ * Copyright 2007, 2008, 2009 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  * Copyright 2008 by Chad Phillips ("hunmonk", http://drupal.org/user/22079)
  */
 
@@ -47,11 +47,15 @@ $xcvs['multisite_directory'] = '';
 // Shared code
 // ------------------------------------------------------------
 
-function xcvs_bootstrap($xcvs) {
-  // Add $drupal_path to current value of the PHP include_path.
-  set_include_path(get_include_path() . PATH_SEPARATOR . $xcvs['drupal_path']);
+// Store the current working directory at include time,
+// because it's being changed when Drupal is bootstrapped.
+$xcvs['cwd'] = getcwd();
 
-  $current_directory = getcwd();
+/**
+ * Bootstrap all of Drupal (DRUPAL_BOOTSTRAP_FULL phase) and set the
+ * current working directory to the Drupal root path.
+ */
+function xcvs_bootstrap($xcvs) {
   chdir($xcvs['drupal_path']);
 
   // Bootstrap Drupal so we can use Drupal functions to access the databases, etc.
@@ -80,8 +84,6 @@ function xcvs_bootstrap($xcvs) {
 
   require_once './includes/bootstrap.inc';
   drupal_bootstrap(DRUPAL_BOOTSTRAP_FULL);
-
-  chdir($current_directory);
 }
 
 function xcvs_get_temp_directory($temp_path) {
