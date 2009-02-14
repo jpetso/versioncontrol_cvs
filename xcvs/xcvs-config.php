@@ -48,18 +48,27 @@ $xcvs['multisite_directory'] = '';
 // ------------------------------------------------------------
 
 function xcvs_bootstrap($xcvs) {
-
-  // add $drupal_path to current value of the PHP include_path
+  // Add $drupal_path to current value of the PHP include_path.
   set_include_path(get_include_path() . PATH_SEPARATOR . $xcvs['drupal_path']);
 
   $current_directory = getcwd();
   chdir($xcvs['drupal_path']);
 
-  // bootstrap Drupal so we can use drupal functions to access the databases, etc.
+  // Bootstrap Drupal so we can use Drupal functions to access the databases, etc.
   if (!file_exists('./includes/bootstrap.inc')) {
     fwrite(STDERR, "Error: failed to load Drupal's bootstrap.inc file.\n");
     exit(1);
   }
+
+  // Set up a few variables, Drupal might not bootstrap without those.
+  // Copied from scripts/drupal.sh.
+  $_SERVER['HTTP_HOST']       = 'default';
+  $_SERVER['PHP_SELF']        = '/index.php';
+  $_SERVER['REMOTE_ADDR']     = '127.0.0.1';
+  $_SERVER['SERVER_SOFTWARE'] = 'PHP CLI';
+  $_SERVER['REQUEST_METHOD']  = 'GET';
+  $_SERVER['QUERY_STRING']    = '';
+  $_SERVER['PHP_SELF']        = $_SERVER['REQUEST_URI'] = '/';
 
   // Set up the multisite directory if necessary.
   if ($xcvs['multisite_directory']) {
