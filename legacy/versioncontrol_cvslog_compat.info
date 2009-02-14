@@ -2,7 +2,6 @@
 name = "cvs.module compatibility"
 description = "Compatibility layer to implement certain aspects of cvs.module on top of Version Control API and its CVS backend."
 dependencies[] = versioncontrol_cvs
-dependencies[] = versioncontrol_project
 dependencies[] = commitlog
 package = Version Control
 core = 6.x
