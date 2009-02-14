@@ -252,7 +252,13 @@ function xcvs_init($argc, $argv) {
         ),
       );
       _versioncontrol_cvs_fix_commit_operation_items($operation, $operation_items);
-      versioncontrol_insert_operation($operation, $operation_items);
+      $operation = versioncontrol_insert_operation($operation, $operation_items);
+
+      if (!empty($operation)) {
+        fwrite(STDERR, t("Recorded as commit !id.\n", array(
+          '!id' => versioncontrol_format_operation_revision_identifier($operation),
+        )));
+      }
     }
 
     // Clean up
