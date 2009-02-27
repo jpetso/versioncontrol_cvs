@@ -368,7 +368,9 @@ function _versioncontrol_cvs_fix_commit_operation_items($operation, &$operation_
  *   An array of additional author information.
  */
 function versioncontrol_cvs_account($op, $uid, $username, $repository, $additional_data = array()) {
-  $cvs_specific = $additional_data['cvs_specific'];
+  $cvs_specific = isset($additional_data['cvs_specific'])
+    ? $additional_data['cvs_specific']
+    : NULL;
 
   switch ($op) {
     case 'insert':
