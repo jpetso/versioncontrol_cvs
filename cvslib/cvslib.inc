@@ -763,3 +763,68 @@ function cvslib_cat($destination, $repository_root, $item_path, $constraints = a
   _cvslib_delete_temporary_files($tempfiles);
   return TRUE;
 }
+
+/**
+ * Export the contents of a whole directory in a repository to a given
+ * destination directory. This function is equivalent to
+ * 'cvs -qf -d $repository_root export -d . $destination'.
+ *
+ * @param $destination
+ *   The path of the directory that should afterwards contain the
+ *   repository directory's contents.
+ * @param $repository_root
+ *   The root directory of the CVS repository that you want to access.
+ *   This function performs the necessary shell escapes, no need to do that
+ *   beforehand.
+ * @param $item_path
+ *   A string containing the directory path relative to the repository root.
+ *   Both paths starting with a slash ("/") and paths omitting it are accepted
+ *   as input.
+ * @param $constraints
+ *   An array of filter constraints that specify which repository items should
+ *   be retrieved. The following array elements are accepted (all are optional):
+ *
+ *   - 'date': Retrieve the directory at a specific date (given as Unix timestamp).
+ *   - 'revision': Retrieve the directory with a given revision number or on a
+ *        given branch/tag (on a branch, the latest revision will be retrieved).
+ *
+ * @return
+ *   TRUE if the directory was exported successfully. If the CVS invocation
+ *   exited with an error, this function returns FALSE and the error message
+ *   can be retrieved by calling cvslib_last_error_message().
+ */
+function cvslib_export($destination, $repository_root, $item_path, $constraints = array()) {
+  // Create the target directory and chdir() to it, because "cvs export" can't
+  // take absolute export directory paths as argument.
+  if (!mkdir($destination, 0777, TRUE)) {
+    return FALSE;
+  }
+  $cwd = getcwd();
+
+  if (!chdir($destination)) {
+    return FALSE;
+  }
+
+  $cmd = array(
+    'cvs',
+    '-qf', // standard global arguments: quiet, no ~/.cvsrc file
+    '-d '. escapeshellcmd($repository_root),
+    'export',
+    '-d .', // write to current directory
+  );
+  if (!empty($constraints['revision'])) {
+    $cmd[] = '-r'. $constraints['revision'];
+  }
+  if (!empty($constraints['date'])) {
+    $cmd[] = '-D @'. $constraints['date'];
+  }
+  $relative_item_path = _cvslib_fix_path($item_path);
+  $cmd[] = $relative_item_path;
+
+  $tempfiles = _cvslib_add_output_pipes($cmd);
+  $output = _cvslib_exec($cmd, $tempfiles);
+  _cvslib_delete_temporary_files($tempfiles);
+  chdir($cwd);
+
+  return ($output === FALSE) ? FALSE : TRUE;
+}
