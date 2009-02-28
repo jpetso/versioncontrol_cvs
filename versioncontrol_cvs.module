@@ -179,7 +179,7 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
  * in the given directory inside the repository.
  */
 function versioncontrol_cvs_get_directory_contents($repository, $directory_item, $recursive = FALSE) {
-  _versioncontrol_cvs_init_cvslib($repository);
+  _versioncontrol_cvs_init_cvslib();
 
   $selected_label = versioncontrol_get_item_selected_label($repository, $directory_item);
   $labelname = empty($selected_label) ? 'HEAD' : $selected_label['name'];
@@ -219,7 +219,7 @@ function versioncontrol_cvs_get_directory_contents($repository, $directory_item,
  * (You won't get the original because repositories can often be remote.)
  */
 function versioncontrol_cvs_export_file($repository, $file_item, $destination) {
-  _versioncontrol_cvs_init_cvslib($repository);
+  _versioncontrol_cvs_init_cvslib();
 
   $success = cvslib_cat($destination, $repository['root'], $file_item['path'],
                         array('revision' => $file_item['revision']));
