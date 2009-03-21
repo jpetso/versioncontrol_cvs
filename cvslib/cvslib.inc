@@ -347,7 +347,9 @@ function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
     }
 
     $item = new stdClass();
-    $item->path = $context . $matches[2];
+    $item->path = ($context == '/'. $matches[2] .'/')
+      ? '/'. $matches[2] // file has been queried: just leave the path as is
+      : $context . $matches[2]; // directory has been queried: compose the path
 
     if ($matches[1] == 'D') {
       $item->directory = TRUE;
@@ -359,9 +361,13 @@ function _cvslib_parse_ls($repository_root, &$entries, $relative_item_path) {
       $item->binary = (strpos($matches[5], '-kb') !== FALSE);
 
       if ($matches[6] == 'T') { // sticky tag (which includes branches)
-        $item->sticky_tag = $matches[7];
+        // "cvs ls" is evil, and also returns revisions like "1.31" as sticky
+        // tag. Tag names must start with a letter, so we can guard from that.
+        if (!is_numeric($matches[7][0])) {
+          $item->sticky_tag = $matches[7];
+        }
       }
-      else if ($matches[6] == 'T') { // sticky tag (which includes branches)
+      else if ($matches[6] == 'D') { // sticky date
         $item->sticky_date = strtotime($matches[7]);
       }
     }
@@ -607,6 +613,7 @@ function _cvslib_parse_log($repository_root, &$logs) {
         }
       }
     }
+    $file->tag_names = array_keys($file->tags);
 
     // Next line looks like "total revisions: 4;     selected revisions: 2"
     $parts = explode(';', $next($logs));
@@ -694,6 +701,12 @@ function _cvslib_parse_log($repository_root, &$logs) {
           $file_revision->tags[] = $tag_name;
         }
       }
+
+      // Also, remember all branches and tags that apply to that file, by
+      // simply pulling in the "branches" and "tags" properties from the $file
+      // into each file revision object.
+      $file_revision->all_branches = $file->branches;
+      $file_revision->all_tags = $file->tag_names;
 
       $file_revisions[] = $file_revision;
     } // loop to the next revision of this file
