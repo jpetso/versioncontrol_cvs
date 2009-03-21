@@ -143,8 +143,9 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
     // The item exists and is a file. We want more info (dead or not, label)
     // so let's retrieve further info with cvs log.
     $file_revisions = cvslib_log($repository['root'], $path, array(
-      'revision' => empty($revision) ? 'HEAD.' : $revision,
+      'revision' => $contents[$path]->revision,
       'recursive' => FALSE,
+      'show_dead_files' => TRUE,
     ));
     if ($file_revisions === FALSE || empty($file_revisions)) {
       return NULL;
@@ -174,6 +175,120 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
 }
 
 /**
+ * Implementation of [versioncontrol_backend]_get_parallel_items():
+ * Given an item in a repository, retrieve related versions of that item on all
+ * different branches and/or tags where the item exists.
+ */
+function versioncontrol_cvs_get_parallel_items($repository, $item, $label_type_filter = NULL) {
+  _versioncontrol_cvs_init_cvslib();
+
+  $file_revisions = cvslib_log($repository['root'], $item['path'], array(
+    // Fetching only the latest HEAD version still retrieves all labels.
+    'revision' => 'HEAD.',
+    // If the item is a directory, only consider its direct children.
+    // (Think of querying d.o's "/contributions" recursively. ... ...right.)
+    'recursive' => FALSE,
+  ));
+  if ($file_revisions === FALSE) {
+    return NULL;
+  }
+  $labels = array(
+    VERSIONCONTROL_OPERATION_BRANCH => array('HEAD'),
+    VERSIONCONTROL_OPERATION_TAG => array(),
+  );
+  $is_directory_item = TRUE;
+
+  foreach ($file_revisions as $file_revision) {
+    // For directory items, the file children will be retrieved, so we can tell
+    // by comparing the given and the resulting path which kind of item it is.
+    if ($is_directory_item && $item['path'] == $file_revision->path) {
+      $is_directory_item = FALSE;
+    }
+    $labels[VERSIONCONTROL_OPERATION_BRANCH] = array_unique(array_merge(
+      $labels[VERSIONCONTROL_OPERATION_BRANCH], $file_revision->all_branches
+    ));
+    $labels[VERSIONCONTROL_OPERATION_TAG] = array_unique(array_merge(
+      $labels[VERSIONCONTROL_OPERATION_TAG], $file_revision->all_tags
+    ));
+  }
+  if (isset($label_type_filter)) {
+    unset($labels[$label_type_filter]);
+  }
+
+  // Construct the list of parallel items.
+  // Slightly different depending on the item type.
+  if ($is_directory_item) {
+    $parallel_item = array(
+      'path' => $item['path'],
+      'revision' => '',
+      'type' => VERSIONCONTROL_ITEM_DIRECTORY,
+    );
+  }
+  $parallel_items = array();
+
+  foreach ($labels as $label_type => $label_names) {
+    foreach ($label_names as $label_name) {
+      if (!$is_directory_item) {
+        $parallel_item = _versioncontrol_cvs_file_item_from_cvslib_ls(
+          $repository, $item['path'], $label_name
+        );
+        if (!isset($parallel_item)) {
+          continue; // should not happen expect in unknown edge cases
+        }
+      }
+      $label = array(
+        'type' => $label_type,
+        'name' => $label_name,
+      );
+      $parallel_items[] = array('item' => $parallel_item, 'selected_label' => $label);
+    }
+  }
+  return $parallel_items;
+}
+
+/**
+ * Create a Version Control API file item by calling cvslib_ls() on a path and
+ * revision that is known to exist. The item label cannot reliably retrieved
+ * with cvslib_ls(), so you need to call cvslib_log() on the specific file
+ * revision if you want that too.
+ *
+ * @return
+ *   An item array if the file could be retrieved, or NULL in case of an error.
+ */
+function _versioncontrol_cvs_file_item_from_cvslib_ls($repository, $path, $revision = NULL) {
+  $constraints = array(
+    'revision' => empty($revision) ? 'HEAD' : $revision,
+    'recursive' => FALSE,
+    'show_dead_files' => FALSE,
+  );
+  $file_is_dead = FALSE;
+  $file_revisions = cvslib_ls($repository['root'], $path, $constraints);
+
+  if (is_array($file_revisions) && empty($file_revisions)) {
+    $constraints['show_dead_files'] = TRUE;
+    $file_is_dead = TRUE;
+    $file_revisions = cvslib_ls($repository['root'], $path, $constraints);
+  }
+  if ($file_revisions === FALSE || empty($file_revisions)) {
+    return NULL;
+  }
+  $file_revision = reset($file_revisions); // first array element
+
+  if ($file_revision->path != $path) {
+    // Should not happen, but let's avoid subtle bugs and race conditions.
+    return NULL;
+  }
+
+  return array(
+    'path' => $file_revision->path,
+    'revision' => $file_revision->revision,
+    'type' => $file_is_dead
+              ? VERSIONCONTROL_ITEM_FILE_DELETED
+              : VERSIONCONTROL_ITEM_FILE,
+  );
+}
+
+/**
  * Implementation of [versioncontrol_backend]_get_directory_contents():
  * Retrieve the set of files and directories that exist at a specified revision
  * in the given directory inside the repository.
@@ -182,10 +297,10 @@ function versioncontrol_cvs_get_directory_contents($repository, $directory_item,
   _versioncontrol_cvs_init_cvslib();
 
   $selected_label = versioncontrol_get_item_selected_label($repository, $directory_item);
-  $labelname = empty($selected_label) ? 'HEAD' : $selected_label['name'];
+  $label_name = empty($selected_label) ? 'HEAD' : $selected_label['name'];
 
   $contents = cvslib_ls($repository['root'], $directory_item['path'], array(
-    'revision' => $labelname,
+    'revision' => $label_name,
     'recursive' => $recursive,
   ));
   if ($contents === FALSE) {
@@ -206,7 +321,7 @@ function versioncontrol_cvs_get_directory_contents($repository, $directory_item,
         'type' => empty($selected_label)
                   ? VERSIONCONTROL_OPERATION_BRANCH
                   : $selected_label['type'],
-        'name' => $labelname,
+        'name' => $label_name,
       ),
     );
   }
