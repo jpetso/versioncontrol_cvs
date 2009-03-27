@@ -134,22 +134,27 @@ function versioncontrol_cvs_versioncontrol_alter_repository_list($vcs, $reposito
   $header[] = t('Update method');
   $header[] = t('Last updated');
 
-  foreach ($rows_by_repo_id as $repo_id => $row) {
+  foreach ($rows_by_repo_id as $repo_id => &$row) {
+    if (strpos($repositories[$repo_id]['root'], ':pserver:') !== FALSE) {
+      $host_start_index = strpos($repositories[$repo_id]['root'], '@') + 1;
+      $row['root'] = check_plain(substr($repositories[$repo_id]['root'], $host_start_index));
+    }
+
     $modules = array();
     foreach ($repositories[$repo_id]['cvs_specific']['modules'] as $module) {
       $modules[] = check_plain($module);
     }
-    $rows_by_repo_id[$repo_id][] = theme('item_list', $modules);
+    $row['modules'] = theme('item_list', $modules);
 
     if ($repositories[$repo_id]['cvs_specific']['update_method'] == VERSIONCONTROL_CVS_UPDATE_XCVS) {
-      $rows_by_repo_id[$repo_id][] = t('external script');
+      $row['update_method'] = t('external script');
     }
     else if ($repositories[$repo_id]['cvs_specific']['update_method'] == VERSIONCONTROL_CVS_UPDATE_CRON) {
-      $rows_by_repo_id[$repo_id][] = t('logs (!fetch)', array(
+      $row['update_method'] = t('logs (!fetch)', array(
         '!fetch' => l(t('fetch now'), 'admin/project/versioncontrol-repositories/update/cvs/'. $repo_id)
       ));
     }
-    $rows_by_repo_id[$repo_id][] = $repositories[$repo_id]['cvs_specific']['updated']
+    $row['updated'] = $repositories[$repo_id]['cvs_specific']['updated']
       ? format_date($repositories[$repo_id]['cvs_specific']['updated'], 'small')
       : t('never');
   }
