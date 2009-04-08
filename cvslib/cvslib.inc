@@ -798,8 +798,8 @@ function cvslib_cat($destination, $repository_root, $item_path, $constraints = a
  *   be retrieved. The following array elements are accepted (all are optional):
  *
  *   - 'date': Retrieve the directory at a specific date (given as Unix timestamp).
- *   - 'revision': Retrieve the directory with a given revision number or on a
- *        given branch/tag (on a branch, the latest revision will be retrieved).
+ *   - 'revision': Retrieve the directory on a given branch/tag (for branches,
+ *        the latest revision will be retrieved except if 'date' is specified).
  *
  * @return
  *   TRUE if the directory was exported successfully. If the CVS invocation

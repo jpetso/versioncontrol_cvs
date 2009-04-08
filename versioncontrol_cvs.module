@@ -105,10 +105,10 @@ function _versioncontrol_cvs_init_cvslib() {
  * Implementation of [versioncontrol_backend]_get_item():
  * Try to retrieve a given item in a repository.
  */
-function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
+function versioncontrol_cvs_get_item($repository, $path, $constraints = array()) {
   _versioncontrol_cvs_init_cvslib();
 
-  $label = array(
+  $label = !empty($constraints['label']) ? $constraints['label'] : array(
     'name' => 'HEAD',
     'type' => VERSIONCONTROL_OPERATION_BRANCH,
   );
@@ -128,8 +128,14 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
     'show_dead_files' => TRUE,
     'show_empty_dirs' => TRUE,
   );
-  if (!empty($revision)) {
-    $ls_constraints['revision'] = $revision;
+  if (!empty($constraints['revision'])) {
+    $ls_constraints['revision'] = $constraints['revision'];
+  }
+  if (!isset($ls_constraints['revision'])) {
+    $ls_constraints['revision'] = $label['name'];
+  }
+  if (!empty($label['date'])) {
+    $ls_constraints['date'] = $label['date'];
   }
   $contents = cvslib_ls($repository['root'], dirname($path), $ls_constraints);
 
@@ -164,7 +170,10 @@ function versioncontrol_cvs_get_item($repository, $path, $revision = '') {
                 ? VERSIONCONTROL_ITEM_FILE_DELETED
                 : VERSIONCONTROL_ITEM_FILE,
     );
-    if (empty($file_revision->branch)) {
+    if (!empty($constraints['label'])) {
+      $label = $constraints['label'];
+    }
+    elseif (empty($file_revision->branch)) {
       $label = NULL; // should not happen except in unknown edge cases
     }
     else {
@@ -331,13 +340,32 @@ function versioncontrol_cvs_get_directory_contents($repository, $directory_item,
 /**
  * Implementation of [versioncontrol_backend]_export_file():
  * Retrieve a copy of the contents of a given item in the repository.
- * (You won't get the original because repositories can often be remote.)
  */
 function versioncontrol_cvs_export_file($repository, $file_item, $destination) {
   _versioncontrol_cvs_init_cvslib();
 
   $success = cvslib_cat($destination, $repository['root'], $file_item['path'],
                         array('revision' => $file_item['revision']));
+  return $success;
+}
+
+/**
+ * Implementation of [versioncontrol_backend]_export_directory():
+ * Retrieve a copy of the given directory item in the repository.
+ */
+function versioncontrol_cvs_export_directory($repository, $directory_item, $destination_dirpath) {
+  _versioncontrol_cvs_init_cvslib();
+
+  $selected_label = versioncontrol_get_item_selected_label($repository, $directory_item);
+  $constraints = array(
+    'revision' => empty($selected_label) ? 'HEAD' : $selected_label['name'],
+  );
+  if (!empty($selected_label['date'])) {
+    $constraints['date'] = $selected_label['date'];
+  }
+
+  $success = cvslib_export($destination_dirpath, $repository['root'],
+                           $directory_item['path'], $constraints);
   return $success;
 }
 
