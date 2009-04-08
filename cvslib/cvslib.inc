@@ -807,14 +807,22 @@ function cvslib_cat($destination, $repository_root, $item_path, $constraints = a
  *   can be retrieved by calling cvslib_last_error_message().
  */
 function cvslib_export($destination, $repository_root, $item_path, $constraints = array()) {
+  if (!_cvslib_repository_login($repository_root)) {
+    return FALSE;
+  }
   // Create the target directory and chdir() to it, because "cvs export" can't
   // take absolute export directory paths as argument.
   if (!mkdir($destination, 0777, TRUE)) {
     return FALSE;
   }
+  // Guard dirname() against relative directories and the likes.
+  $destination = realpath($destination);
   $cwd = getcwd();
 
-  if (!chdir($destination)) {
+  // CVS has problems with absolute paths as "-d" option as well as with
+  // specifying the cwd (".") directly. So that only leaves chdir'ing to the
+  // parent directory and exporting to the basename from there.
+  if (!chdir(dirname($destination))) {
     return FALSE;
   }
 
@@ -823,7 +831,7 @@ function cvslib_export($destination, $repository_root, $item_path, $constraints 
     '-qf', // standard global arguments: quiet, no ~/.cvsrc file
     '-d '. escapeshellcmd($repository_root),
     'export',
-    '-d .', // write to current directory
+    '-d '. basename($destination),
   );
   if (!empty($constraints['revision'])) {
     $cmd[] = '-r'. $constraints['revision'];
