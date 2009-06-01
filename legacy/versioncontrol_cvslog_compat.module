@@ -28,11 +28,17 @@ function versioncontrol_cvslog_compat_menu() {
     'access arguments' => array($view_access),
     'type' => MENU_CALLBACK,
   );
-  // Redirect from the legacy URL to prevent link rot.
-  $items['project/developers/%'] = array(
+  $items['project/developers/%'] = array( // old project* path
     'title' => 'Developers',
     'page callback' => 'versioncontrol_cvslog_compat_redirect',
     'page arguments' => array('node/!1/developers', 2),
+    'type' => MENU_CALLBACK,
+    'access callback' => TRUE,
+  );
+  $items['node/%/committers'] = array( // newer cvslog path
+    'title' => 'Developers',
+    'page callback' => 'versioncontrol_cvslog_compat_redirect',
+    'page arguments' => array('node/!1/developers', 1),
     'type' => MENU_CALLBACK,
     'access callback' => TRUE,
   );
