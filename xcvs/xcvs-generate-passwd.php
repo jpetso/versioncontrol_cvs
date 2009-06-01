@@ -13,8 +13,9 @@
  * have access. You need to set the DRUPAL_SITE constant if you want the output
  * to have nice links to the accounts' corresponding user pages.
  *
- * Copyright 2007 by Derek Wright ("dww", http://drupal.org/user/46549)
- * Copyright 2007 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
+ * Copyright 2007, 2008 by Derek Wright ("dww", http://drupal.org/user/46549)
+ * Copyright 2008 by Khalid Baheyeldin ("kbahey", http://drupal.org/user/4063)
+ * Copyright 2007, 2009 by Jakob Petsovits ("jpetso", http://drupal.org/user/56020)
  */
 
 /**
@@ -24,40 +25,53 @@
 define('DRUPAL_SITE', 'http://example.com');
 
 function xcvs_help($cli, $output_stream) {
-  fwrite($output_stream, "Usage: $cli <config file> > <CVSROOT>/passwd\n\n");
+  fwrite($output_stream, "Usage: $cli <config file> <CVSROOT>/passwd\n\n");
 }
 
 function xcvs_init($argc, $argv) {
   $this_file = array_shift($argv);   // argv[0]
   $config_file = array_shift($argv); // argv[1]
+  $passwd_file = array_shift($argv); // argv[2]
 
-  if ($argc < 2) {
+  if ($argc < 3) {
     xcvs_help($this_file, STDERR);
     exit(3);
   }
+  $passwd_file_new = $passwd_file . '.new';
 
   // Load the configuration file and bootstrap Drupal.
   if (!file_exists($config_file)) {
-    fwrite(STDERR, "Error: failed to load configuration file.\n");
+    fwrite(STDERR, $this_file . ": Failed to load configuration file.\n");
     exit(4);
   }
-  include_once $config_file;
+  require_once $config_file;
 
   // Do a full Drupal bootstrap.
   xcvs_bootstrap($xcvs);
 
   $repository = versioncontrol_get_repository($xcvs['repo_id']);
   if (!isset($repository)) {
-    fwrite(STDERR, "The repository corresponding to the configured repo id could not be loaded.\n");
-    exit(1);
+    fwrite(STDERR, $this_file . ": The repository for the configured repo id could not be loaded.\n");
+    exit(5);
   }
 
   // Set the Drupal base path, so that url() returns a proper URL.
   global $base_url;
   $base_url = DRUPAL_SITE;
 
-  // Do the export!
-  fwrite(STDOUT, versioncontrol_export_accounts($repository));
+  // Retrieve the file contents, and write them to the new file.
+  $output = versioncontrol_export_accounts($repository);
+
+  if (!file_put_contents($passwd_file_new, $output)) {
+    fwrite(STDERR, $this_file . ": Writing to new passwd file failed!\n");
+    exit(6);
+  }
+
+  // Rename the file.
+  if (!rename($passwd_file_new, $passwd_file)) {
+    fwrite(STDERR, $this_file . ": Renaming new passwd file failed!\n");
+    exit(7);
+  }
   exit(0);
 }
 
