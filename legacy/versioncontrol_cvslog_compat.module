@@ -23,9 +23,18 @@ function versioncontrol_cvslog_compat_menu() {
   );
   $items['cvs-application'] = array(
     'title' => 'CVS application form',
-    'page callback' => 'versioncontrol_cvslog_compat_application_page',
+    'page callback' => 'versioncontrol_cvslog_compat_redirect',
+    'page arguments' => array('versioncontrol/register'),
     'access arguments' => array($view_access),
     'type' => MENU_CALLBACK,
+  );
+  // Redirect from the legacy URL to prevent link rot.
+  $items['project/developers/%'] = array(
+    'title' => 'Developers',
+    'page callback' => 'versioncontrol_cvslog_compat_redirect',
+    'page arguments' => array('node/!1/developers', 2),
+    'type' => MENU_CALLBACK,
+    'access callback' => TRUE,
   );
   return $items;
 }
@@ -33,8 +42,16 @@ function versioncontrol_cvslog_compat_menu() {
 /**
  * Page callback for the 'cvs-application' menu path.
  */
-function versioncontrol_cvslog_compat_application_page() {
-  drupal_goto('versioncontrol/register');
+function versioncontrol_cvslog_compat_redirect($path) {
+  if (func_num_args() > 1) {
+    $args = func_get_args();
+    $replacements = array();
+    for ($i = 1; $i < func_num_args(); $i++) { // starting from element #2
+      $replacements['!' . $i] = $args[$i];
+    }
+    $path = strtr($path, $replacements);
+  }
+  drupal_goto($path, NULL, NULL, 301);
 }
 
 /**
